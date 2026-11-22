@@ -13,7 +13,7 @@ Two modes bracket the unknown official normalization:
   lenient  case-insensitive, whitespace-collapsed, punctuation-normalized
 
 Usage:
-    python -m eval.score --gold hacknation-2026/dane --pred out/naive [--errors out/naive_errors.jsonl]
+    python -m research.eval.score --gold hacknation-2026/dane --pred out/naive [--errors out/naive_errors.jsonl]
 """
 
 from __future__ import annotations

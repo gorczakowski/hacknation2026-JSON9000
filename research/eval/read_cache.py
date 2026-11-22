@@ -9,7 +9,7 @@ Output per PDF: <out>/<reader>/<rel>.txt (plain text, page breaks as form feeds)
 and for MinerU also <rel>.middle.json (blocks with bboxes, for evidence).
 
 Usage:
-    .venv/Scripts/python.exe eval/read_cache.py --reader pypdfium2 --input hacknation-2026/dane
+    .venv/Scripts/python.exe research/eval/read_cache.py --reader pypdfium2 --input hacknation-2026/dane
     .venv-mineru/Scripts/python.exe eval/read_cache.py --reader mineru:flash:txt --input hacknation-2026/dane
 """
 

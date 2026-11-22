@@ -5,7 +5,7 @@ Strategies:
   doc       rules output, but the model's whole document when rules produced {} or the doc is a scan
   fill+doc  both
 
-Usage: python -m eval.merge --rules out/rules --model out/naive_mistral24_norm --out out/hyb_x --strategy fill
+Usage: python -m research.eval.merge --rules out/rules --model out/naive_mistral24_norm --out out/hyb_x --strategy fill
 """
 
 from __future__ import annotations

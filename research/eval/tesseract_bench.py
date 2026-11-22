@@ -1,7 +1,7 @@
 """OCR benchmark for Tesseract (in Docker): render scan pages -> PNG, OCR in the uzp-tesseract container,
 assemble one .txt per PDF into out/text/tesseract_psm<N>/ so eval.findability can compare it with MinerU.
 
-Usage: python eval/tesseract_bench.py --input hacknation-2026/dane --only skany [--dpi 300] [--psm 3]
+Usage: python research/eval/tesseract_bench.py --input hacknation-2026/dane --only skany [--dpi 300] [--psm 3]
 """
 
 from __future__ import annotations

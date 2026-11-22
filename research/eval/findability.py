@@ -9,7 +9,7 @@ Each gold leaf is searched in a type-aware way:
 Fields that are not text in the document (ids, enums, flags) are skipped.
 
 Usage:
-    python -m eval.findability --gold hacknation-2026/dane --readers pypdfium2 mineru_flash_txt mineru_flash_auto
+    python -m research.eval.findability --gold hacknation-2026/dane --readers pypdfium2 mineru_flash_txt mineru_flash_auto
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from pathlib import Path
 
 from rapidfuzz import fuzz
 
-from eval.score import gold_path_for, subset_of
+from research.eval.score import gold_path_for, subset_of
 
 SKIP = {"czynnosc_powod_id", "czynnosc_opis", "przez-pelnomocnika", "prowadzacy_postepowanie", "typ"}
 DIGIT_FIELDS = {"krs", "nip", "regon", "pesel", "na_rachunek", "z_rachunku"}

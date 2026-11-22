@@ -9,7 +9,7 @@ Text per PDF comes from the reader cache (text layer, else MinerU OCR). Results 
 out/decisions/results.jsonl and printed as a table.
 
 Usage:
-  python -m eval.decision_bench --task both --models liquid/d1.2 baseten/joey-1
+  python -m research.eval.decision_bench --task both --models liquid/d1.2 baseten/joey-1
 """
 
 from __future__ import annotations
@@ -26,14 +26,14 @@ import httpx2 as httpx
 import yaml
 from dotenv import load_dotenv
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from eval.powod_bench import CRITERIA as POWOD_CRITERIA, INSTR as POWOD_INSTR  # noqa: E402
-from eval.score import doc_type, gold_path_for  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from research.eval.powod_bench import CRITERIA as POWOD_CRITERIA, INSTR as POWOD_INSTR  # noqa: E402
+from research.eval.score import doc_type, gold_path_for  # noqa: E402
 from odwolania2json.derive import action_passage  # noqa: E402
 
 G = Path("hacknation-2026/dane")
 TEXT_DIRS = [Path("out/text/pypdfium2"), Path("out/text/mineru_flash_auto")]
-CLS = yaml.safe_load(Path("naive/systemone_fields.yaml").read_text(encoding="utf-8"))["classify"]
+CLS = yaml.safe_load(Path("research/naive/systemone_fields.yaml").read_text(encoding="utf-8"))["classify"]
 
 
 def text_for(rel: Path) -> str:
@@ -62,7 +62,7 @@ def load_items(task: str, state_chars: int):
 
 
 def main():
-    load_dotenv(".env")
+    load_dotenv("research/.env")
     ap = argparse.ArgumentParser()
     ap.add_argument("--task", choices=["classify", "powod", "both"], default="both")
     ap.add_argument("--models", nargs="+", required=True)

@@ -3,8 +3,7 @@
 hacknation-2026
 out
 models
-naive
-eval
+research
 **/__pycache__
 input
 output

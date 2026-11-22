@@ -3,7 +3,7 @@
 Uses the same type-aware search as eval.findability (digits across spaces, date formats, amounts, fuzzy text).
 Text comes from the reader cache (text layer, else OCR cache).
 
-Usage: python -m eval.ground --pred out/naive_mistral24_norm --out out/naive_mistral24_grounded
+Usage: python -m research.eval.ground --pred out/naive_mistral24_norm --out out/naive_mistral24_grounded
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import json
 import shutil
 from pathlib import Path
 
-from eval.findability import SKIP, find, norm
+from research.eval.findability import SKIP, find, norm
 
 TEXT_DIRS = [Path("out/text/pypdfium2"), Path("out/text/mineru_flash_auto")]
 

@@ -3,7 +3,7 @@
 For each model it composes the model's predictions: text PDFs from <text_dir>, scans from <scan_dir> (OCR text),
 then merges rules-first (strategy fill+doc) and scores. Prints one line per model.
 
-Usage: python -m eval.hybrid_table
+Usage: python -m research.eval.hybrid_table
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def points(b):
 
 def score(pred: Path) -> dict:
     out = Path("out/hyb/_s.json")
-    subprocess.run([PY, "-m", "eval.score", "--gold", "hacknation-2026/dane", "--pred", str(pred), "--mode", "strict",
+    subprocess.run([PY, "-m", "research.eval.score", "--gold", "hacknation-2026/dane", "--pred", str(pred), "--mode", "strict",
                     "--json", str(out)], check=True, capture_output=True)
     return json.loads(out.read_text())["strict"]
 
@@ -64,10 +64,10 @@ def main():
             shutil.rmtree(comp / "skany", ignore_errors=True)
             shutil.copytree(Path(sdir) / "skany", comp / "skany")
         print(fmt(f"{name} alone", size, score(comp)))
-        subprocess.run([PY, "-m", "eval.merge", "--rules", "out/rules", "--model", str(comp), "--out", "out/hyb/_merged",
+        subprocess.run([PY, "-m", "research.eval.merge", "--rules", "out/rules", "--model", str(comp), "--out", "out/hyb/_merged",
                         "--strategy", "fill+doc"], check=True)
         print(fmt(f"rules + {name}", size, score(Path("out/hyb/_merged"))))
-        subprocess.run([PY, "-m", "eval.merge", "--rules", "out/rules", "--model", str(comp), "--out", "out/hyb/_merged",
+        subprocess.run([PY, "-m", "research.eval.merge", "--rules", "out/rules", "--model", str(comp), "--out", "out/hyb/_merged",
                         "--strategy", "fill+doc", "--model-first", "pelnomocnictwo"], check=True)
         print(fmt(f"rules + {name} (model-first POA)", size, score(Path("out/hyb/_merged"))))
 

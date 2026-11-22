@@ -4,12 +4,12 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import httpx2 as httpx
 from dotenv import load_dotenv
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import re as _re
 import yaml as _yaml
 from odwolania2json.derive import action_passage as _passage, first_item
 
-_POWOD = _yaml.safe_load(Path(__file__).resolve().parent.parent.joinpath("config/doctypes/odwolanie.yaml")
+_POWOD = _yaml.safe_load(Path(__file__).resolve().parents[2].joinpath("config/doctypes/odwolanie.yaml")
                          .read_text(encoding="utf-8"))["powod"]
 
 
@@ -42,7 +42,7 @@ INSTR = "Której czynności lub zaniechania Zamawiającego dotyczy odwołanie? J
 
 
 def main():
-    load_dotenv(".env")
+    load_dotenv("research/.env")
     ap = argparse.ArgumentParser()
     ap.add_argument("--models", nargs="*", default=[])
     ap.add_argument("--text", default="out/text/pypdfium2")

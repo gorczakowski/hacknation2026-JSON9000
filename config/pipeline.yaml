@@ -10,9 +10,12 @@ ocr:
   cache_dir: null         # writable folder for OCR model files (null = MinerU default ~/.mineru)
   tesseract_dpi: 300
   fallback_engine: tesseract   # used when MinerU fails on a document, and for all scans after fallback_after_s
-  # Safety net only (like runtime.deadline_s): after this many seconds remaining scans use the faster Tesseract,
-  # so a scan-heavy set still finishes in time. Runs that finish earlier never use it.
-  fallback_after_s: 1500
+  # Time safety net, step 1 of 2 (step 2 is runtime.deadline_s):
+  #   0-30 min  MinerU (more accurate, ~35 s per scan on 2 CPUs)
+  #   30-40 min Tesseract (~8 s per scan on 2 CPUs) so a scan-heavy set still finishes
+  #   40+ min   no OCR, no model (see runtime.deadline_s)
+  # Runs that finish within 30 minutes never use it.
+  fallback_after_s: 1800
 
 # Model fallback (rules stay in charge where they are sure). OpenAI-compatible chat API.
 llm:
@@ -37,7 +40,7 @@ hybrid:
 
 runtime:
   workers: 4              # documents processed in parallel
-  # Safety net only: if a run is still going after this many seconds, the remaining documents are processed with
-  # rules only (no OCR / model calls) so the whole set finishes within the evaluator's limit (45 min).
-  # Runs shorter than this are not affected at all.
+  # Time safety net, step 2 of 2: if a run is still going after this many seconds, the remaining documents are
+  # processed with rules only (no OCR / model calls) so the whole set finishes within the evaluator's limit
+  # (45 min). Runs shorter than this are not affected at all.
   deadline_s: 2400

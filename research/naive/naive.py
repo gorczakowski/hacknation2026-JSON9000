@@ -4,7 +4,7 @@ A reference point for the real pipeline, not the submission. It sends whole docu
 an OpenRouter model, which is NOT EU-compliant hosting. Synthetic data only.
 
 Usage:
-    python naive/naive.py --input hacknation-2026/dane --output out/naive [--limit 5] [--workers 8]
+    python research/naive/naive.py --input hacknation-2026/dane --output out/naive [--limit 5] [--workers 8]
 
 Config comes from .env (see .env.example): OPENROUTER_API_KEY, NAIVE_CLASSIFY_MODEL, NAIVE_EXTRACT_MODEL.
 """
@@ -27,7 +27,7 @@ import pypdfium2 as pdfium
 from dotenv import load_dotenv
 from openai import OpenAI
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]  # repo root
 SPEC_DIR = ROOT / "hacknation-2026" / "oczekiwane-json"
 DOC_TYPES = ["odwolanie", "pelnomocnictwo", "przelew"]
 MIN_TEXT_CHARS = 200  # below this the PDF is treated as a scan and sent as images
@@ -295,7 +295,7 @@ def process(pdf_path: Path, in_root: Path, out_root: Path, llm: LLM, raw_specs, 
 
 
 def main() -> int:
-    load_dotenv(ROOT / ".env")
+    load_dotenv(ROOT / "research" / ".env")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--input", type=Path, required=True)
     ap.add_argument("--output", type=Path, required=True)

@@ -35,8 +35,8 @@ PDF ─► read ───────────► classify ──────
 - **Evidence.** For every document, `evidence/<name>.json` records the type scores, who decided (rules or model),
   and for each value the method and the surrounding text it came from. Check-digit results for NIP/REGON/PESEL/IBAN
   are reported there too (never used to change values).
-- **Safety nets for the time limit.** After 25 minutes the remaining scans use Tesseract, and after 40 minutes the
-  remaining documents are processed with rules only, so every PDF still gets its output. Runs that finish earlier
+- **Safety nets for the time limit.** MinerU is used for the first 30 minutes, then the remaining scans use the faster
+  Tesseract, and after 40 minutes the remaining documents are processed with rules only, so every PDF still gets its output. Runs that finish earlier
   are not affected.
 
 ## Running it
@@ -100,7 +100,7 @@ rulings) was added this way; enabling it changes only the ruling's output and le
 | [calibrate.py](odwolania2json/calibrate.py) | threshold helper for document types |
 | [validators.py](odwolania2json/validators.py) | NIP / REGON / PESEL / IBAN check digits (reported, not enforced) |
 
-Evaluation and research tooling is in [eval/](eval/) (F1 scorer following the organizers' rules, OCR "findability",
-model and decision-model benchmarks) and [naive/](naive/) (pure-model baselines). Notes: [NOTES.md](NOTES.md)
+Evaluation and research tooling is in [research/eval/](research/eval/) (F1 scorer following the organizers' rules, OCR "findability",
+model and decision-model benchmarks) and [research/naive/](research/naive/) (pure-model baselines). Notes: [NOTES.md](NOTES.md)
 (task research), [FAQ.md](FAQ.md) (organizers' answers), [MODELS.md](MODELS.md) (models and EU hosts),
 [EXPERIMENTS.md](EXPERIMENTS.md) (all measurements).

@@ -1,6 +1,6 @@
 # Experiments log
 
-All scores come from `python -m eval.score`, using the organizers' TP/FP/FN rules (see FAQ.md). Strict and lenient modes gave the same numbers so far. The dataset is `hacknation-2026/dane` at commit `84cc976`, 226 PDFs:
+All scores come from `python -m research.eval.score`, using the organizers' TP/FP/FN rules (see FAQ.md). Strict and lenient modes gave the same numbers so far. The dataset is `hacknation-2026/dane` at commit `84cc976`, 226 PDFs:
 - 180 text PDFs (60 cases)
 - 4 unrelated PDFs inside case folders
 - 30 image-only scans
@@ -40,6 +40,16 @@ Main error sources:
 
 | **Hybrid in the CLI** (11-22): rules + Qwen3.5-4B (ARK), classification safety net, `fill` / `model_first` modes, sanity checks on model values, 1–12 fallback on the passage. OCR from the cache | **0.979** | – | 0.920 | 0.976 | 226/226 | 564 s (226 PDFs, 185 model calls; 36 failed during an ARK outage, before the retry fix) |
 
+**VM-like runs** (Docker `--cpus=2 --memory=16g`, image `json9000`):
+| Run | F1 | Scans F1 | Time |
+|---|---|---|---|
+| All 226 PDFs, MinerU OCR (subprocess per scan), rules + Qwen3.5-4B (ARK) | **0.988** | 0.982 | 1788 s (29.8 min); 218 model calls, 3 failed |
+| 30 scans only, rules only, MinerU in-process | – | 0.869 | 1035 s = **34.5 s per scan** |
+| 30 scans only, rules only, Tesseract | – | 0.758 | 232 s = **7.7 s per scan** |
+
+On 2 CPUs MinerU is about 4.5× slower than Tesseract. Rules-only F1 on scans is 0.869 with MinerU vs 0.758 with Tesseract; the model fallback narrows the gap.
+Worst case, 150 scans: MinerU alone would take about 86 min, which is why the OCR switch and the deadline exist.
+
 Prompt wording test (`Jeżeli danej wartości nie ma w dokumencie, podaj null.` instead of `Wartość, której nie ma w dokumencie, to null.`), 60 text appeals:
 | Model | Wording | Overall F1 (P / R) | `data` F1 (invented) | `miejscowosc` F1 (invented) |
 |---|---|---|---|---|
@@ -55,7 +65,7 @@ Extensibility check:
 - The other 225 outputs are identical.
 - `--check-config` reports broken configs (unknown section, path not in template, unknown derive step) with file and field, and exits with code 3.
 
-### Scans: model reads MinerU OCR text instead of page images (`eval/run_scans_ocr.sh`, 30 scans)
+### Scans: model reads MinerU OCR text instead of page images (`research/eval/run_scans_ocr.sh`, 30 scans)
 | Model | Scans from images | Scans from OCR text | Cost (30 scans) |
 |---|---|---|---|
 | Ministral-3B | 0.859 | **0.921** | $0.013 |
@@ -79,7 +89,7 @@ Extensibility check:
 | MinerU standard (VLM **MinerU2.5-Pro-2605-1.2B** GGUF, 1.2 GB, llama.cpp on CPU) | – | 7/7 on the one scan tested (flash also 7/7); perfect diacritics | **155 s for one page** (+ load ≈ 3 min). Far beyond the 18 s/doc budget on CPU | GPU-only in practice |
 | Cactus Mirage (51M, `.venv-cactus`) | – | – | ~5 s/page | Unusable: "Gdafisk", "NIP. 9990s642", "REGON. 000ncgug". Digits get corrupted. |
 
-### Hybrids v2 (`python -m eval.hybrid_table`): rules v2 + model fallback; scans via OCR text
+### Hybrids v2 (`python -m research.eval.hybrid_table`): rules v2 + model fallback; scans via OCR text
 `model-first POA` = for powers of attorney the model's answer wins and rules only fill gaps. For appeals and transfers the rules win.
 
 | Setup | Size (points, last published table) | F1 | Text | Scans | Appeals | POA | Transfers |
@@ -111,7 +121,7 @@ Rejected:
 - **Ling-3.0-tiny:** returns only reasoning, no answer.
 - **Qwen3.6-35B:** 51 failures (reasoning) and 36B in size.
 
-### Decision models (`python -m eval.decision_bench`): classification (226 docs, first 3000 chars) and 1–12 code (70 appeals incl. scans, action passage)
+### Decision models (`python -m research.eval.decision_bench`): classification (226 docs, first 3000 chars) and 1–12 code (70 appeals incl. scans, action passage)
 All via OpenRouter (not EU-hosted; for comparison only). Keyword rules: classification 226/226, 1–12 code 70/70.
 
 | Model | Size | Classification | 1–12 code | Cost (both tasks) |
@@ -143,7 +153,7 @@ Latency p50 0.2–0.8 s per question (OpenRouter). Not testable here: **Bielik-O
 
 ARK Bielik-11B v3.1: alone 0.902 (8 failures from the parallel-request limit), rules + v3.1 model-first POA 0.970. Worse than v3.0.
 
-### Non-LLM NER (`eval/ner_bench.py`, GLiNER multi v2.1, ~0.2B, local CPU), 70 powers of attorney
+### Non-LLM NER (`research/eval/ner_bench.py`, GLiNER multi v2.1, ~0.2B, local CPU), 70 powers of attorney
 | Task | P | R | F1 |
 |---|---|---|---|
 | Any person named (attorneys, signatories, natural-person principals) | 0.982 | 1.000 | **0.991** |
@@ -164,7 +174,7 @@ Notes:
 - llama.cpp's grammar-based JSON mode fails for Bielik ("Failed to initialize samplers"). Set `NAIVE_NO_RESPONSE_FORMAT=1`.
 - Local whole-document extraction doesn't fit the time budget on this CPU. Only very short, narrow prompts could.
 
-### Naive chat pipeline by model (`eval/run_models.sh`, with format rules applied); still running
+### Naive chat pipeline by model (`research/eval/run_models.sh`, with format rules applied); still running
 | Model | Size | F1 | Text | Scans | 1–12 code | Cost |
 |---|---|---|---|---|---|---|
 | mistral-small-3.2 | 24B | 0.977 | 0.981 | 0.953 | 0.889 | $0.10 |
@@ -172,7 +182,7 @@ Notes:
 | ministral-3b-2512 | 3.8B | 0.916 | 0.926 | 0.859 | 0.807 | $0.09 |
 | ministral-8b-2512 | 8.9B | 0.901 | 0.904 | 0.881 | 0.880 | $0.13 |
 
-### Hybrid simulation, offline (`python -m eval.merge`): rules first, model as fallback
+### Hybrid simulation, offline (`python -m research.eval.merge`): rules first, model as fallback
 These merge the saved outputs of the rules pipeline (v1) and of the naive full-document model runs.
 - `fill` = the model fills fields the rules left empty.
 - `doc` = the model's whole output is used for scans and for documents the rules classified as unrelated.
@@ -190,7 +200,7 @@ These merge the saved outputs of the rules pipeline (v1) and of the naive full-d
 | rules + Gemma-3-4B (fill) | 4.3B | 20 | 0.920 | 0.957 | 0.596 |
 | gpt-oss-20b / nemotron-31b (text-only, so scans fail) | 21B / 32B | 12 | 0.939 / 0.936 | 0.980 / 0.979 | 0.564 |
 
-### Grounding filter, offline (`python -m eval.ground`): null any model value not found in the text
+### Grounding filter, offline (`python -m research.eval.ground`): null any model value not found in the text
 | Model | Before | After grounding | Values dropped |
 |---|---|---|---|
 | Mistral-Small-24B | 0.977 | 0.977 | 17 |
@@ -200,7 +210,7 @@ These merge the saved outputs of the rules pipeline (v1) and of the naive full-d
 
 Conclusion: the models' errors are almost never invented strings. They pick the **wrong span**: a date from the body used as the header date, a truncated account number, the wrong party. "Appears somewhere in the text" grounding doesn't catch these. Position-aware constraints (rules and sections) do.
 
-## Readers: findability (`python -m eval.findability`)
+## Readers: findability (`python -m research.eval.findability`)
 "Findability" is the share of gold values that can be found in the reader's text. It is an upper bound on extraction recall.
 
 | Reader | Text PDFs | Scans | Speed |
@@ -214,7 +224,7 @@ Notes on MinerU:
 - Its Markdown output drops blocks typed `header`, which includes the "Miasto, dnia …" line. Use the middle JSON, which keeps them with bboxes.
 - OCR errors seen: "Sp. z 0.0." for "Sp. z o.o.", "Odwohującego" for "Odwołującego", "ODWOLANI E" for "ODWOŁANIE". Digits were correct.
 
-## czynnosc_powod_id (`python eval/powod_bench.py`), 60 text appeals
+## czynnosc_powod_id (`python research/eval/powod_bench.py`), 60 text appeals
 The key step: `extract/focus.py` cuts out the passage that states the challenged action ("wnoszę o: Zamawiający w dniu … <action>." or "polegających na: 1) …"). Only that passage is classified.
 
 | Method | Size | Passage | Full text (12k chars) |

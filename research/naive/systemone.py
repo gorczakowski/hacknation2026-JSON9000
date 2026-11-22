@@ -6,10 +6,10 @@ PDF -> text layer (or page images for scans)
     -> Decisions API (e.g. czynnosc_powod_id)  -> enum fields
     -> derive rules + normalization            -> JSON in the exact spec shape
 
-Field mapping lives in naive/systemone_fields.yaml.
+Field mapping lives in research/naive/systemone_fields.yaml.
 
 Usage:
-    python naive/systemone.py --input hacknation-2026/dane --output out/s1 [--limit 5]
+    python research/naive/systemone.py --input hacknation-2026/dane --output out/s1 [--limit 5]
 Env (.env): OPENROUTER_API_KEY, S1_DECISION_MODEL (default liquid/d1.2), S1_EXTRACT_MODEL (default cloudflare/clairic)
 """
 
@@ -183,7 +183,7 @@ def process(pdf_path: Path, in_root: Path, out_root: Path, s1: SystemOne, cfg: d
 
 
 def main() -> int:
-    load_dotenv(ROOT / ".env")
+    load_dotenv(ROOT / "research" / ".env")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--input", type=Path, required=True)
     ap.add_argument("--output", type=Path, required=True)
