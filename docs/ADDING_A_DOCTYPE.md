@@ -1,140 +1,142 @@
-# Adding a new document type
+# Dodanie nowego typu dokumentu
 
-A document type is **one YAML file**. No code changes are needed. This guide uses the worked example
-[config/examples/orzeczenie_kio.yaml](../config/examples/orzeczenie_kio.yaml) (KIO rulings).
+Typ dokumentu to **jeden plik YAML**. Zmiany w kodzie nie są potrzebne. W tym przewodniku używamy gotowego przykładu
+[config/examples/orzeczenie_kio.yaml](../config/examples/orzeczenie_kio.yaml) (orzeczenia KIO).
 
-## Workflow
+## Kolejne kroki
 
-1. **Collect samples:** a few PDFs of the new type, and a folder of documents that are *not* this type.
-2. **Copy the example** to `config/examples/<name>.yaml` (or `config/doctypes/` to load it by default).
-3. **Describe the output** (`output:`), **how to recognise it** (`classify:`), and **how to read each field** (`fields:` / `lists:`).
-4. **Validate:** `python -m odwolania2json --check-config --doctype config/examples/<name>.yaml`.
-   Problems are listed with file and field (e.g. an unknown section, a path that is not in the output, a broken regex).
-5. **Calibrate the threshold:**
+1. **Zbierz próbki:** kilka PDF-ów nowego typu oraz folder dokumentów, które *nie* są tym typem.
+2. **Skopiuj przykład** do `config/examples/<nazwa>.yaml` (albo do `config/doctypes/`, żeby ładował się domyślnie).
+3. **Opisz wynik** (`output:`), **sposób rozpoznania** (`classify:`) i **sposób odczytu każdego pola** (`fields:` / `lists:`).
+4. **Sprawdź konfigurację:** `python -m odwolania2json --check-config --doctype config/examples/<nazwa>.yaml`.
+   Problemy są wypisywane z nazwą pliku i pola (np. nieznana sekcja, ścieżka, której nie ma w wyniku, błędny regex).
+5. **Skalibruj próg:**
    ```bash
-   python -m odwolania2json.calibrate --type <name> --doctype config/examples/<name>.yaml \
-       --positives samples/<name> --negatives samples/other
+   python -m odwolania2json.calibrate --type <nazwa> --doctype config/examples/<nazwa>.yaml \
+       --positives samples/<nazwa> --negatives samples/other
    ```
-   It shows how often each phrase rule matches in each group, every document's score, and a suggested threshold
-   in the gap between the groups (or a warning when they overlap).
-6. **Run** with `--doctype config/examples/<name>.yaml` and check `output/` and `evidence/`, which shows where each
-   value came from.
+   Narzędzie pokazuje, jak często każda reguła frazy pasuje w każdej grupie, wynik każdego dokumentu i sugerowany próg
+   w przerwie między grupami (albo ostrzeżenie, gdy grupy na siebie zachodzą).
+6. **Uruchom** z `--doctype config/examples/<nazwa>.yaml` i sprawdź `output/` oraz `evidence/`, gdzie widać, skąd
+   pochodzi każda wartość.
 
-## The file
+## Plik
 
 ```yaml
-name: orzeczenie_kio                 # unique type name
+name: orzeczenie_kio                 # unikalna nazwa typu
 
-output:                              # the JSON shape (keys + nesting); values are only examples
+output:                              # kształt JSON (klucze + zagnieżdżenie); wartości to tylko przykłady
   OrzeczenieKIO:
     sygnatura: "KIO 2617/21"
     data: "2021-09-20"
     ...
-# or instead:  template: my_type.json   (a separate JSON file, // comments allowed; looked up next to the YAML,
-#                                        in its templates/ folder, or in config/templates/)
+# albo zamiast tego:  template: my_type.json   (osobny plik JSON, komentarze // dozwolone; szukany obok pliku YAML,
+#                                               w jego folderze templates/ albo w config/templates/)
 
 classify:
-  description: "Orzeczenie KIO (wyrok lub postanowienie) z sygnaturą akt KIO."   # for the model, when rules are unsure
-  threshold: 6                       # minimum score to count as this type
-  sure_margin: 2                     # optional: rules decide alone if score >= threshold + this (default from pipeline.yaml)
-  priority: 0                        # optional: breaks exact ties between types
-  rules:                             # phrases with points; matched case- and diacritics-insensitively
+  description: "Orzeczenie KIO (wyrok lub postanowienie) z sygnaturą akt KIO."   # dla modelu, gdy reguły nie są pewne
+  threshold: 6                       # minimalny wynik, żeby dokument był tym typem
+  sure_margin: 2                     # opcjonalne: reguły decydują same, gdy wynik >= threshold + ta wartość (domyślna z pipeline.yaml)
+  priority: 0                        # opcjonalne: rozstrzyga dokładne remisy między typami
+  rules:                             # frazy z punktami; dopasowanie bez rozróżniania wielkości liter i polskich znaków
     - {pattern: '^\s*sygn\.\s*akt\s*:?\s*KIO', weight: 4}
     - {pattern: '^\s*(wyrok|postanowienie)\s*$', weight: 3}
-    - {pattern: '^\s*orzeka\s*:?', weight: 2, anywhere: true}   # default: first 4000 chars; anywhere: whole text
-    - {pattern: '^\s*odwołujący\s*:', weight: -4}               # negative points for look-alikes
+    - {pattern: '^\s*orzeka\s*:?', weight: 2, anywhere: true}   # domyślnie: pierwsze 4000 znaków; anywhere: cały tekst
+    - {pattern: '^\s*odwołujący\s*:', weight: -4}               # punkty ujemne dla podobnych dokumentów
 
-sections:                            # optional named parts of the document
+sections:                            # opcjonalne nazwane części dokumentu
   sentencja:
-    start: ['^\s*orzeka\s*:?']       # first match starts the section
-    end: ['^\s*stosownie\s+do', '^\s*uzasadnienie']   # also ends at the start of any other section
+    start: ['^\s*orzeka\s*:?']       # pierwsze dopasowanie rozpoczyna sekcję
+    end: ['^\s*stosownie\s+do', '^\s*uzasadnienie']   # sekcja kończy się też na początku każdej innej sekcji
     max_chars: 3000
 
-fields:                              # output path -> extraction methods, tried in order; first value wins
+fields:                              # ścieżka w wyniku -> metody ekstrakcji, próbowane po kolei; wygrywa pierwsza wartość
   OrzeczenieKIO.sygnatura:
     - {regex: 'sygn\.\s*akt\s*:?\s*(?P<v>KIO\s*\d+/\d+)'}
   OrzeczenieKIO.data:
     - {regex: 'z\s+dnia\s+(?P<v>\d{1,2}\s+\w+\s+\d{4})', type: date}
   OrzeczenieKIO.rozstrzygniecie:
-    - {regex: '^\s*1\.\s*(?P<v>[^;\n]+)', scope: sentencja}   # search only inside a section
+    - {regex: '^\s*1\.\s*(?P<v>[^;\n]+)', scope: sentencja}   # szukanie tylko wewnątrz sekcji
   OrzeczenieKIO.numer_bzp:
     - {find: bzp}
 
-derive: [normalize]                  # named post-processing steps (see below)
+derive: [normalize]                  # nazwane kroki końcowe (zob. niżej)
 
 llm:
-  mode: fill                         # fill | model_first | off  (how rules and the model are combined)
-  instructions: ""                   # optional extra instructions for the model
+  mode: fill                         # fill | model_first | off  (jak łączone są reguły i model)
+  instructions: ""                   # opcjonalne dodatkowe instrukcje dla modelu
 ```
 
-## Recognition (`classify`)
+## Rozpoznawanie (`classify`)
 
-- The score is the sum of the weights of the rules that match.
-- A type qualifies when its score reaches its `threshold`. Among qualifying types, the highest score wins.
-- The rules are **sure** when the winner is at least `sure_margin` above its threshold and at least `sure_margin`
-  ahead of every other type. Then no model is called.
-- When every type scores 0 or less, the document is unrelated (`{}`).
-- Otherwise the model chooses using the types' `description` sentences. If no model is configured, the rules'
-  answer is used.
+- Wynik to suma wag reguł, które pasują.
+- Typ się kwalifikuje, gdy jego wynik osiąga `threshold`. Spośród kwalifikujących się typów wygrywa ten z najwyższym
+  wynikiem.
+- Reguły są **pewne**, gdy zwycięzca ma co najmniej `sure_margin` powyżej swojego progu i co najmniej `sure_margin`
+  przewagi nad każdym innym typem. Wtedy model nie jest wywoływany.
+- Gdy każdy typ ma wynik 0 lub mniej, dokument jest niezwiązany (`{}`).
+- W pozostałych przypadkach wybiera model, na podstawie zdań `description` poszczególnych typów. Jeśli model nie jest
+  skonfigurowany, używana jest odpowiedź reguł.
 
-## Extraction methods
+## Metody ekstrakcji
 
-| Method | Example | Meaning |
+| Metoda | Przykład | Znaczenie |
 |---|---|---|
-| `label` + `type` | `{label: ['kwota\s+operacji', 'kwota'], type: amount}` | the value right after one of the labels (first label that yields a value wins) |
-| `regex` | `{regex: 'NIP\s*(?P<v>\d{10})'}` | named group `v` (or group 1); optional `type` to parse it; `dotall: true` |
-| `find` | `{find: email}` | first value of a kind anywhere in the scope: `email`, `bzp`, `ted`, `date` |
-| `place_date` | `{place_date: date}` / `{place_date: place}` | from a header line like "Gdańsk, dnia 15 lipca 2026 r." (`date_only_before: '<heading regex>'`: also a date-only line at the top or right above that heading) |
-| `first_line` | `{first_line: true, skip: '^Konsorcjum'}` | first non-empty line of the scope (e.g. a company name after "Odwołujący:") |
-| `names_after` | `{names_after: ['udzielam\s+pełnomocnictwa'], first: true}` | person names after a phrase, titles (r. pr., adw.) stripped |
-| `nth` | `{nth: 1, of: account, min_count: 2}` | the n-th account number in the scope (fallback when there are no labels) |
-| `const` | `{const: "osoba_prawna"}` | a fixed value |
+| `label` + `type` | `{label: ['kwota\s+operacji', 'kwota'], type: amount}` | wartość tuż po jednej z etykiet (wygrywa pierwsza etykieta, która daje wartość) |
+| `regex` | `{regex: 'NIP\s*(?P<v>\d{10})'}` | nazwana grupa `v` (albo grupa 1); opcjonalny `type` do sparsowania; `dotall: true` |
+| `find` | `{find: email}` | pierwsza wartość danego rodzaju w dowolnym miejscu zakresu: `email`, `bzp`, `ted`, `date` |
+| `place_date` | `{place_date: date}` / `{place_date: place}` | z wiersza nagłówka w rodzaju „Gdańsk, dnia 15 lipca 2026 r.” (`date_only_before: '<regex nagłówka>'`: także wiersz z samą datą na górze dokumentu albo tuż nad tym nagłówkiem) |
+| `first_line` | `{first_line: true, skip: '^Konsorcjum'}` | pierwszy niepusty wiersz zakresu (np. nazwa firmy po „Odwołujący:”) |
+| `names_after` | `{names_after: ['udzielam\s+pełnomocnictwa'], first: true}` | imiona i nazwiska po frazie, bez tytułów (r. pr., adw.) |
+| `nth` | `{nth: 1, of: account, min_count: 2}` | n-ty numer rachunku w zakresie (rozwiązanie zapasowe, gdy nie ma etykiet) |
+| `const` | `{const: "osoba_prawna"}` | stała wartość |
 
-- Every method can take `scope: <section>`. If that section is not found in the document, the method is skipped
-  and the next one is tried.
-- `final: true` makes a method authoritative: when it can run (no scope, or its section was found), its answer
-  stands even if it found nothing. Later methods are skipped, and in `fill` mode the model does not fill the field.
-  Use it when the absence of a value in the right place means "no value", e.g. notice numbers read only from the
-  "dotyczy" block, because the body may cite other proceedings. It applies to text-layer PDFs only; on OCR text it
-  is ignored, because OCR can separate a label from its value.
-- `type` values: `date` (ISO; Polish month names supported), `amount` (float), `account` (IBAN with country
-  code, or a 26-digit NRB), `digitsN` (e.g. `digits10`), `email`, `token`, `bzp`, `ted`, `text` (multi-line, up to
-  `stop:` labels), `line`.
+- Każda metoda może przyjąć `scope: <sekcja>`. Jeśli tej sekcji nie ma w dokumencie, metoda jest pomijana i próbowana
+  jest następna.
+- `final: true` czyni metodę rozstrzygającą: gdy może zostać użyta (bez `scope` albo jej sekcja została znaleziona), jej
+  odpowiedź obowiązuje, nawet jeśli nic nie znalazła. Kolejne metody są pomijane, a w trybie `fill` model nie uzupełnia
+  tego pola. Przydaje się, gdy brak wartości we właściwym miejscu oznacza „brak wartości”, np. numery ogłoszeń czytane
+  tylko z bloku „dotyczy”, bo treść może przywoływać inne postępowania. Działa tylko dla PDF-ów z warstwą tekstową; dla
+  tekstu z OCR jest ignorowane, bo OCR może oddzielić etykietę od wartości.
+- Wartości `type`: `date` (ISO; obsługiwane polskie nazwy miesięcy), `amount` (liczba zmiennoprzecinkowa), `account`
+  (IBAN z kodem kraju albo 26-cyfrowy NRB), `digitsN` (np. `digits10`), `email`, `token`, `bzp`, `ted`, `text`
+  (wielowierszowy, do etykiet z `stop:`), `line`.
 
-**Lists** (e.g. several attorneys, consortium members) go under `lists:`:
+**Listy** (np. kilku pełnomocników, członkowie konsorcjum) umieszcza się w `lists:`:
 ```yaml
 lists:
-  Zamawiajacy:                  # output path of the list
-    scope: zamawiajacy          # section to read from
-    split: '^\s*\d\)\s'         # optional: split the section into items ("1) ...", "2) ...")
+  Zamawiajacy:                  # ścieżka listy w wyniku
+    scope: zamawiajacy          # sekcja, z której czytamy
+    split: '^\s*\d\)\s'         # opcjonalne: podział sekcji na elementy („1) ...”, „2) ...”)
     max_items: 3
-    fields:                     # paths inside one item
+    fields:                     # ścieżki wewnątrz jednego elementu
       nazwa: [{first_line: true}]
       nip:   [{label: ['NIP'], type: digits10}]
 ```
-Or one item per name found: `from_names: [...]` with `name_field: imie_nazwisko`.
+Albo jeden element na każde znalezione nazwisko: `from_names: [...]` z `name_field: imie_nazwisko`.
 
-## Post-processing (`derive`)
+## Kroki końcowe (`derive`)
 
-Named steps from the built-in library, applied in order:
+Nazwane kroki z wbudowanej biblioteki, stosowane po kolei:
 
-| Step | What it does |
+| Krok | Co robi |
 |---|---|
-| `normalize` | IDs to digits; accounts without spaces, keeping the country code; BZP and TED formats; positive amounts; titles stripped from names |
-| `powod_and_date` | the 1–12 challenged-action code. Configured in the same YAML under `powod:` (passage patterns, keyword rules, labels); see [odwolanie.yaml](../config/doctypes/odwolanie.yaml) |
-| `header_line` | when no header date was found: the model picks one numbered line from the top of the document, and its date/place are kept only if they are visible in that line. Configured under `header_line:` (`date`, `place`, `prompt`, `max_chars`, `max_lines`); see [odwolanie.yaml](../config/doctypes/odwolanie.yaml) |
-| `przez_pelnomocnika`, `prowadzacy_postepowanie`, `mocodawca_typ`, `signatories` | appeal and power-of-attorney specific flags and lists |
+| `normalize` | identyfikatory do samych cyfr; numery rachunków bez spacji, z zachowaniem kodu kraju; formaty BZP i TED; kwoty dodatnie; tytuły usunięte z imion i nazwisk |
+| `powod_and_date` | kod zaskarżonej czynności 1–12. Konfigurowany w tym samym pliku YAML w `powod:` (wzorce fragmentu, reguły słów kluczowych, etykiety); zob. [odwolanie.yaml](../config/doctypes/odwolanie.yaml) |
+| `header_line` | gdy nie znaleziono daty w nagłówku: model wybiera jeden ponumerowany wiersz z początku dokumentu, a data i miejscowość zostają tylko wtedy, gdy są widoczne w tym wierszu. Konfigurowany w `header_line:` (`date`, `place`, `prompt`, `max_chars`, `max_lines`); zob. [odwolanie.yaml](../config/doctypes/odwolanie.yaml) |
+| `przez_pelnomocnika`, `prowadzacy_postepowanie`, `mocodawca_typ`, `signatories` | flagi i listy właściwe dla odwołania i pełnomocnictwa |
 
-A new reusable step is a small Python function registered in `derive.REGISTRY`. That is the only time code changes.
+Nowy krok wielokrotnego użytku to mała funkcja w Pythonie zarejestrowana w `derive.REGISTRY`. Tylko wtedy zmienia się
+kod.
 
-## Model fallback (`llm`)
+## Model jako uzupełnienie (`llm`)
 
-- `fill`: the rules' values win, the model fills empty fields (not `final` ones). When nothing is left to fill,
-  the model is not asked.
-- `model_first`: the model's values win, the rules fill gaps. Good when the layouts vary a lot. Lists come whole
-  from the model; on text-layer PDFs an item is then completed from the rules' item with the same NIP, KRS, REGON
-  or PESEL.
-- `off`: rules only.
-- Scans use `hybrid.scan_mode` from `pipeline.yaml` (default `model_first`).
-- The model receives the output shape with its comments as instructions, so good comments or an `output:` block
-  with meaningful example values improve its answers.
+- `fill`: wygrywają wartości z reguł, model uzupełnia puste pola (poza polami `final`). Gdy nie ma nic do uzupełnienia,
+  model nie jest pytany.
+- `model_first`: wygrywają wartości modelu, reguły uzupełniają luki. Dobre, gdy układy dokumentów bardzo się różnią.
+  Listy pochodzą w całości od modelu; w PDF-ach z warstwą tekstową element jest wtedy uzupełniany z elementu reguł
+  o tym samym NIP, KRS, REGON lub PESEL.
+- `off`: tylko reguły.
+- Skany używają `hybrid.scan_mode` z `pipeline.yaml` (domyślnie `model_first`).
+- Model dostaje kształt wyniku wraz z komentarzami jako instrukcje, więc dobre komentarze albo blok `output:`
+  z sensownymi przykładowymi wartościami poprawiają jego odpowiedzi.

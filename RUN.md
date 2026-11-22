@@ -1,26 +1,27 @@
 # RUN - JSON9000
 
-Run from `/opt/solution` (needs Docker; the image is already built on this server):
+Uruchamiać z katalogu `/opt/solution` (wymaga Dockera; obraz jest już zbudowany na tym serwerze):
 
 ```bash
 docker compose run --rm -T --name JSON9000-BATCH json9000
 ```
 
-- Reads every PDF in `/opt/solution/input` (subfolders included) and writes one JSON per PDF to
-  `/opt/solution/output`, with the same relative path and the PDF's file name (`x.pdf` → `x.json`).
-- Documents that are none of the three types (odwołanie, pełnomocnictwo, potwierdzenie przelewu) get `{}`.
-- Ends by itself and prints a summary (files, time, read errors, model calls).
-- `/opt/solution/evidence` gets a file per document saying where each value came from (not part of the result).
+- Czyta każdy PDF w `/opt/solution/input` (także w podfolderach) i zapisuje jeden JSON na każdy PDF do
+  `/opt/solution/output`, z tą samą ścieżką względną i nazwą pliku PDF (`x.pdf` → `x.json`).
+- Dokumenty, które nie należą do żadnego z trzech typów (odwołanie, pełnomocnictwo, potwierdzenie przelewu), dostają `{}`.
+- Kończy działanie samodzielnie i wypisuje podsumowanie (pliki, czas, błędy odczytu, wywołania modelu).
+- W `/opt/solution/evidence` powstaje plik dla każdego dokumentu z informacją, skąd pochodzi każda wartość (nie jest
+  częścią wyniku).
 
-## External services
-- **ARK Labs API** (Ark Sp. z o.o., Szczecin, Poland; inference on servers in the EU), model
-  **`arklabsai/Qwen3.5-4B`** (open weights, Apache-2.0, 4.66B parameters). It is used only as a fallback:
-  rules decide where they are sure, and the model fills gaps or takes the lead on powers of attorney and scans.
-- The key is in `/opt/solution/.env` as `ARK_API_KEY=...`. Without a key the program runs rules-only.
-- OCR (MinerU flash, ONNX; Tesseract as an alternative) runs **locally** inside the container. No OCR API.
+## Usługi zewnętrzne
+- **API ARK Labs** (Ark Sp. z o.o., Szczecin; inferencja na serwerach w UE), model
+  **`arklabsai/Qwen3.5-4B`** (otwarte wagi, Apache-2.0, 4,66 mld parametrów). Jest używany tylko pomocniczo:
+  reguły decydują tam, gdzie są pewne, a model uzupełnia luki albo prowadzi przy pełnomocnictwach i skanach.
+- Klucz jest w `/opt/solution/.env` jako `ARK_API_KEY=...`. Bez klucza program działa tylko na regułach.
+- OCR (MinerU flash, ONNX; Tesseract jako alternatywa) działa **lokalnie** w kontenerze. Bez API do OCR.
 
-## If the image is missing (e.g. after `docker system prune`)
+## Jeśli brakuje obrazu (np. po `docker system prune`)
 ```bash
-docker compose build        # needs internet: Python packages + OCR models (~1-2 GB)
+docker compose build        # wymaga internetu: pakiety Pythona + modele OCR (ok. 1-2 GB)
 docker compose run --rm -T --name JSON9000-BATCH json9000
 ```
