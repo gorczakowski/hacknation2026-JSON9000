@@ -1,0 +1,47 @@
+# Potwierdzenie przelewu (bank transfer confirmation)
+# Labels are matched case-insensitively and diacritics-insensitively ("Tytul" matches "tytuł").
+name: przelew
+template: przelew.json
+
+classify:
+  description: "Potwierdzenie wykonania przelewu bankowego (np. wpis od odwołania, opłata skarbowa) z rachunkami nadawcy i odbiorcy, kwotą, datą i tytułem."   # used by the model when the rules are not sure
+  threshold: 4
+  rules:
+    - {pattern: 'potwierdzeni\w*\s+(wykonania\s+|realizacji\s+)?(polecenia\s+)?przelewu|polecenie\s+przelewu|potwierdzenie\s+operacji|dow[oó]d\s+wykonania\s+przelewu|przelew\s+krajowy', weight: 3}
+    - {pattern: 'rachun\w*\s+(zleceniodawcy|nadawcy|odbiorcy|beneficjenta|uznawan|kontrahenta)|z\s+rachunku|na\s+rachunek|\bbeneficjent|\bpłatnik|\bnadawca|zleceniodawc', weight: 2}
+    - {pattern: 'tytu\w*(\s+przelewu)?\s*:?|\bopis\s*:|szczeg[oó]ły\s+płatno', weight: 1}
+    - {pattern: '\bbank\w*\b', weight: 1}
+    - {pattern: '\b(kwota|warto[sś][cć])\b', weight: 1}
+    - {pattern: '\d{2}(\s?\d{4}){6}', weight: 1}
+    - {pattern: 'odwołujący\s*:|^\s*odwołani\s?e\b', weight: -3}
+    - {pattern: 'udziela\w*\s+(niniejszym\s+)?pe\wnomocnictwa|ustanawiam', weight: -3}
+    - {pattern: '^\s*wyrok\b|^\s*sygn\.\s*akt|izba\s+orzeka', weight: -4}
+
+fields:
+  przelew_bankowy.z_rachunku:
+    - label: ['rachunek\s+zleceniodawcy', 'rachunek\s+nadawcy', 'rachunek\s+płatnika', 'z\s+rachunku(\s+nr)?', 'rachunek\s+obciążany', 'rachunek\s+źródłowy']
+      type: account
+    - {nth: 0, of: account, min_count: 2}     # fallback: the sender's account comes first
+  przelew_bankowy.na_rachunek:
+    - label: ['rachunek\s+uznawany', 'rachunek\s+beneficjenta', 'rachunek\s+odbiorcy', 'rachunek\s+kontrahenta', 'na\s+rachunek(\s+nr)?', 'rachunek\s+docelowy']
+      type: account
+    - {nth: 1, of: account, min_count: 2}
+  przelew_bankowy.kwota:
+    - label: ['kwota\s+operacji', 'kwota\s+przelewu', 'kwota', 'wartość', 'w\s+kwocie']
+      type: amount
+  przelew_bankowy.data_operacji:
+    - label: ['data\s+operacji', 'zlecona\s+data\s+wykonania', 'data\s+wykonania', 'data\s+realizacji', 'data\s+księgowania', 'data\s+transakcji', 'w\s+dniu']
+      type: date
+  przelew_bankowy.numer_transakcji:
+    - label: ['numer\s+referencyjny(\s+operacji)?', 'nr\s+ref\.?', 'numer\s+transakcji(\s+operacji)?', 'id\s+transakcji', 'numer\s+operacji', 'identyfikator\s+transakcji']
+      type: token
+  przelew_bankowy.tytul:
+    - label: ['tytuł\s+przelewu', 'tytułem', 'tytuł', 'opis', 'szczegóły\s+płatności']
+      type: text
+      stop: ['numer\s+referencyjny', 'nr\s+ref', 'numer\s+transakcji', 'waluta', 'status', 'typ\s+operacji', 'kanał', 'opłata', 'data', 'kwota', 'signature', 'tryb', 'dokument']
+
+derive: [normalize]
+
+# Model fallback for fields: fill = rules first, model fills gaps; model_first = model wins, rules fill gaps; off
+llm:
+  mode: fill

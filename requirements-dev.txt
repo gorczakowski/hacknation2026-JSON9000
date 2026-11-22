@@ -1,0 +1,6 @@
+# Evaluation / experiments only (scorer, naive baselines)
+-r requirements.txt
+rapidfuzz>=3.0
+openai>=1.50
+python-dotenv>=1.0
+pillow>=10

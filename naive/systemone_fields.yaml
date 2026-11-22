@@ -1,0 +1,90 @@
+# Field mapping for the "System One" naive pipeline (OpenRouter Extractions + Decisions APIs).
+#
+# extract:   Clairic-style typed fields. Key = field name sent to the model, `path` = where the
+#            value lands in the output JSON (list slots as [0], [1] ...). For `type: list` fields,
+#            `path` contains `[]`, which is filled with the list index.
+# decide:    Decision-model questions (choice / noul). `values` maps the chosen option to the output.
+# derive:    Rules applied after extraction (implemented in systemone.py).
+
+classify:
+  instructions: "Jakiego typu jest ten dokument ze sprawy odwoławczej przed Krajową Izbą Odwoławczą (KIO)?"
+  criteria:
+    odwolanie: "Odwołanie wnoszone przez wykonawcę (Odwołujący) do Prezesa KIO przeciwko czynnościom lub zaniechaniom Zamawiającego, z listą zarzutów."
+    pelnomocnictwo: "Pełnomocnictwo: mocodawca udziela pełnomocnictwa wskazanym osobom (pełnomocnikom)."
+    przelew: "Potwierdzenie wykonania przelewu bankowego (np. wpis od odwołania), z rachunkami, kwotą i tytułem."
+    inny: "Inny dokument: wyrok lub postanowienie KIO, ogłoszenie o zamówieniu (BZP, TED / Dz.U. UE), pismo urzędowe, decyzja, broszura itp."
+
+doctypes:
+  odwolanie:
+    extract:
+      data: {type: date, path: OdwolanieKIO.data, instructions: "Data sporządzenia odwołania z nagłówka pierwszej strony (np. 'Warszawa, dnia 15 lipca 2026')."}
+      miejscowosc: {type: text, path: OdwolanieKIO.miejscowosc, instructions: "Miejscowość z nagłówka pierwszej strony, z linii typu 'X, dnia ...' albo 'X DD.MM.RRRR'."}
+      czynnosc_dzien: {type: date, path: OdwolanieKIO.czynnosc_dzien, instructions: "Data czynności Zamawiającego, której dotyczy PIERWSZY zarzut odwołania (np. data publikacji SWZ, data zawiadomienia o wyborze oferty)."}
+      odwolujacy_nazwa: {type: text, path: "Odwolujacy[0].nazwa", instructions: "Pełna nazwa Odwołującego (wykonawcy wnoszącego odwołanie). Przy konsorcjum: nazwa lidera konsorcjum."}
+      odwolujacy_krs: {type: text, path: "Odwolujacy[0].krs", instructions: "Numer KRS Odwołującego (lub lidera konsorcjum)."}
+      odwolujacy_nip: {type: text, path: "Odwolujacy[0].nip", instructions: "NIP Odwołującego (lub lidera konsorcjum)."}
+      odwolujacy_regon: {type: text, path: "Odwolujacy[0].regon", instructions: "REGON Odwołującego (lub lidera konsorcjum)."}
+      pelnomocnik_imie_nazwisko: {type: text, path: "Odwolujacy[0].pelnomocnik.imie_nazwisko", instructions: "Imię i nazwisko pełnomocnika reprezentującego Odwołującego, bez tytułów (r. pr., adw.)."}
+      pelnomocnik_nazwa: {type: text, path: "Odwolujacy[0].pelnomocnik.nazwa", instructions: "Nazwa kancelarii / podmiotu zatrudniającego pełnomocnika Odwołującego."}
+      pelnomocnik_mail: {type: text, path: "Odwolujacy[0].pelnomocnik.mail", instructions: "Adres e-mail pełnomocnika Odwołującego."}
+      zamawiajacy_nazwa: {type: text, path: "Zamawiajacy[0].nazwa", instructions: "Pełna nazwa Zamawiającego. Jeśli jest kilku zamawiających: ten prowadzący postępowanie (lider)."}
+      zamawiajacy_krs: {type: text, path: "Zamawiajacy[0].krs", instructions: "KRS Zamawiającego, tylko jeśli jawnie podany przy Zamawiającym."}
+      zamawiajacy_nip: {type: text, path: "Zamawiajacy[0].nip", instructions: "NIP Zamawiającego, tylko jeśli jawnie podany przy Zamawiającym."}
+      zamawiajacy_regon: {type: text, path: "Zamawiajacy[0].regon", instructions: "REGON Zamawiającego, tylko jeśli jawnie podany przy Zamawiającym."}
+      zamawiajacy2_nazwa: {type: text, path: "Zamawiajacy[1].nazwa", instructions: "Nazwa DRUGIEGO zamawiającego, tylko jeśli w dokumencie występuje więcej niż jeden zamawiający (zamówienie wspólne)."}
+      zamawiajacy2_krs: {type: text, path: "Zamawiajacy[1].krs", instructions: "KRS drugiego zamawiającego, jeśli występuje."}
+      zamawiajacy2_nip: {type: text, path: "Zamawiajacy[1].nip", instructions: "NIP drugiego zamawiającego, jeśli występuje."}
+      zamawiajacy2_regon: {type: text, path: "Zamawiajacy[1].regon", instructions: "REGON drugiego zamawiającego, jeśli występuje."}
+      numer_bzp: {type: text, path: ZamowieniePubliczne.numer_bzp, instructions: "Numer ogłoszenia w Biuletynie Zamówień Publicznych (BZP), format 'YYYY/BZP ########'. Nie numer TED."}
+      numer_postepowania: {type: text, path: ZamowieniePubliczne.numer_postepowania, instructions: "Numer referencyjny / znak / numer postępowania nadany przez Zamawiającego, np. 'ZP.271.1.2026'."}
+      numer_ted: {type: text, path: ZamowieniePubliczne.numer_ted, instructions: "Numer ogłoszenia w Dzienniku Urzędowym UE (TED), np. '363730-2025' albo '2025/S 112-383751'."}
+      tytul: {type: text, path: ZamowieniePubliczne.tytul, instructions: "Tytuł / nazwa zamówienia (zwykle po 'pn.' w cudzysłowie)."}
+    decide:
+      czynnosc_powod_id:
+        path: OdwolanieKIO.czynnosc_powod_id
+        type: choice
+        max_chars: 15000
+        instructions: "Jakiej czynności (lub zaniechania) Zamawiającego dotyczy PIERWSZY zarzut odwołania? Bierz pod uwagę wyłącznie pierwszy zarzut."
+        criteria:
+          "1": "Decyzja o odrzuceniu oferty (odwołującego)"
+          "2": "Ogłoszenie / wybór najkorzystniejszej oferty"
+          "3": "Decyzja o wykluczeniu wykonawcy"
+          "4": "Publikacja specyfikacji warunków zamówienia (SWZ), treść SWZ / ogłoszenia"
+          "5": "Modyfikacja (zmiana) treści SWZ"
+          "6": "Odpowiedzi / wyjaśnienia treści SWZ udzielone przez zamawiającego"
+          "7": "Zaniechanie odrzucenia oferty (innego wykonawcy)"
+          "8": "Zaniechanie wykluczenia wykonawcy"
+          "9": "Decyzja o unieważnieniu postępowania"
+          "10": "Zaniechanie unieważnienia postępowania"
+          "11": "Opis przedmiotu zamówienia (OPZ)"
+          "12": "Projektowane postanowienia umowy"
+        cast: int
+    derive: [czynnosc_opis, przez_pelnomocnika, prowadzacy_postepowanie]
+
+  pelnomocnictwo:
+    extract:
+      mocodawca_nazwa: {type: text, path: "mocodawca[0].data.nazwa", instructions: "Pełna nazwa mocodawcy (podmiotu udzielającego pełnomocnictwa). Jeśli mocodawca to osoba fizyczna prowadząca działalność, nazwa jej firmy."}
+      mocodawca_imie_nazwisko: {type: text, path: "mocodawca[0].data.imie_nazwisko", instructions: "Imię i nazwisko mocodawcy, TYLKO jeśli mocodawca jest osobą fizyczną (nie spółką)."}
+      mocodawca_krs: {type: text, path: "mocodawca[0].data.krs", instructions: "Numer KRS mocodawcy."}
+      mocodawca_nip: {type: text, path: "mocodawca[0].data.nip", instructions: "NIP mocodawcy."}
+      mocodawca_podpisujacy: {type: list, items: text, path: "mocodawca[0].podpisujacy[].imie_nazwisko", instructions: "Imiona i nazwiska osób podpisujących pełnomocnictwo w imieniu mocodawcy (np. członkowie zarządu)."}
+      mocodawca2_nazwa: {type: text, path: "mocodawca[1].data.nazwa", instructions: "Nazwa DRUGIEGO mocodawcy, tylko jeśli pełnomocnictwa udziela wspólnie więcej niż jeden podmiot (np. konsorcjum)."}
+      mocodawca2_krs: {type: text, path: "mocodawca[1].data.krs", instructions: "KRS drugiego mocodawcy, jeśli występuje."}
+      mocodawca2_nip: {type: text, path: "mocodawca[1].data.nip", instructions: "NIP drugiego mocodawcy, jeśli występuje."}
+      mocodawca2_podpisujacy: {type: list, items: text, path: "mocodawca[1].podpisujacy[].imie_nazwisko", instructions: "Osoby podpisujące w imieniu drugiego mocodawcy, jeśli występuje."}
+      pelnomocnik1_imie_nazwisko: {type: text, path: "pelnomocnicy[0].imie_nazwisko", instructions: "Imię i nazwisko pierwszego pełnomocnika (osoby, której udzielono pełnomocnictwa)."}
+      pelnomocnik1_pesel: {type: text, path: "pelnomocnicy[0].pesel", instructions: "PESEL pierwszego pełnomocnika, jeśli podany."}
+      pelnomocnik2_imie_nazwisko: {type: text, path: "pelnomocnicy[1].imie_nazwisko", instructions: "Imię i nazwisko drugiego pełnomocnika, jeśli jest."}
+      pelnomocnik2_pesel: {type: text, path: "pelnomocnicy[1].pesel", instructions: "PESEL drugiego pełnomocnika, jeśli podany."}
+      pelnomocnik3_imie_nazwisko: {type: text, path: "pelnomocnicy[2].imie_nazwisko", instructions: "Imię i nazwisko trzeciego pełnomocnika, jeśli jest."}
+      pelnomocnik3_pesel: {type: text, path: "pelnomocnicy[2].pesel", instructions: "PESEL trzeciego pełnomocnika, jeśli podany."}
+    derive: [mocodawca_typ]
+
+  przelew:
+    extract:
+      data_operacji: {type: date, path: przelew_bankowy.data_operacji, instructions: "Data wykonania / realizacji przelewu."}
+      kwota: {type: number, decimals: 2, path: przelew_bankowy.kwota, instructions: "Kwota przelewu w PLN."}
+      na_rachunek: {type: text, path: przelew_bankowy.na_rachunek, instructions: "Numer rachunku odbiorcy (na który wysłano przelew)."}
+      z_rachunku: {type: text, path: przelew_bankowy.z_rachunku, instructions: "Numer rachunku nadawcy (z którego wysłano przelew)."}
+      numer_transakcji: {type: text, path: przelew_bankowy.numer_transakcji, instructions: "Numer / identyfikator transakcji lub referencja operacji."}
+      tytul: {type: text, path: przelew_bankowy.tytul, instructions: "Tytuł przelewu (pełny, dokładnie jak w dokumencie)."}

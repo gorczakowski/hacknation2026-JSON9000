@@ -1,0 +1,61 @@
+# EXAMPLE of adding a new document type through configuration only (no code changes).
+# Orzeczenie KIO = a ruling (wyrok) or decision (postanowienie) of the National Appeals Chamber.
+# Not loaded by default (the task's three types are). Enable it with:
+#   python -m odwolania2json --input input --output output --doctype config/examples/orzeczenie_kio.yaml
+#
+# Everything a new type needs, in this one file:
+#   output     - the JSON shape of the result (keys and nesting; the values here are just examples).
+#                Alternatively `template: some.json` points at a separate JSON file (comments allowed there).
+#   classify   - weighted patterns that recognise the document; it is chosen if the sum >= threshold
+#                (use `python -m odwolania2json.calibrate` to pick the threshold from sample documents)
+#   sections   - optional named parts of the document (start/end patterns) that fields can search in
+#   fields     - for each output path, extraction methods tried in order (first value wins)
+#   derive     - optional named post-processing steps from the built-in library (e.g. normalize)
+name: orzeczenie_kio
+
+output:
+  OrzeczenieKIO:
+    sygnatura: "KIO 2617/21"              # sygnatura akt
+    rodzaj: "postanowienie"               # wyrok / postanowienie
+    data: "2021-09-20"                    # data orzeczenia (ISO)
+    przewodniczacy: "Ewa Kisiel"          # przewodniczący składu
+    odwolujacy: "TAMEXOBIEKTY SPORTOWE S.A."
+    zamawiajacy: "Gminę Cieszyn"          # forma z dokumentu
+    rozstrzygniecie: "odrzuca odwołanie"  # pierwszy punkt sentencji
+    numer_bzp: "2021/BZP 00093898"
+
+classify:
+  description: "Orzeczenie Krajowej Izby Odwoławczej (wyrok lub postanowienie) z sygnaturą akt KIO i sentencją."
+  threshold: 6
+  rules:
+    - {pattern: '^\s*sygn\.\s*akt\s*:?\s*KIO', weight: 4}            # case reference at the top
+    - {pattern: '^\s*(wyrok|postanowienie)\s*$', weight: 3}          # title line
+    - {pattern: 'krajowa\s+izba\s+odwoławcza', weight: 1}
+    - {pattern: '^\s*orzeka\s*:?', weight: 2, anywhere: true}        # operative part
+    - {pattern: '^\s*odwołujący\s*:', weight: -4}                    # an appeal, not a ruling
+
+sections:
+  sentencja:                     # operative part: from "orzeka:" to the costs / instruction on appeal
+    start: ['^\s*orzeka\s*:?']
+    end: ['^\s*stosownie\s+do', '^\s*przewodnicz', '^\s*uzasadnienie']
+    max_chars: 3000
+
+fields:
+  OrzeczenieKIO.sygnatura:
+    - {regex: 'sygn\.\s*akt\s*:?\s*(?P<v>KIO\s*\d+/\d+)'}
+  OrzeczenieKIO.rodzaj:
+    - {regex: '^\s*(?P<v>WYROK|POSTANOWIENIE)\s*$'}
+  OrzeczenieKIO.data:
+    - {regex: '^\s*(?:WYROK|POSTANOWIENIE)\s*\n\s*z\s+dnia\s+(?P<v>\d{1,2}\s+\w+\s+\d{4})', type: date, dotall: false}
+  OrzeczenieKIO.przewodniczacy:
+    - {regex: 'Przewodnicz\w+\s*:\s*(?P<v>[A-ZŁŚŻŹĆ][\wąćęłńóśźż]+\s+[A-ZŁŚŻŹĆ][\wąćęłńóśźż\-]+)'}
+  OrzeczenieKIO.odwolujacy:
+    - {regex: 'przez\s+wykonawc\w*\s*:?\s*(?P<v>[^\n]+?)\s+z\s+siedzibą', dotall: true}
+  OrzeczenieKIO.zamawiajacy:
+    - {regex: 'prowadzonym\s+przez\s+(?P<v>.+?)\s+z\s+siedzibą', dotall: true}
+  OrzeczenieKIO.rozstrzygniecie:
+    - {regex: '^\s*1\.\s*(?P<v>[^;\n]+)', scope: sentencja}
+  OrzeczenieKIO.numer_bzp:
+    - {find: bzp}
+
+derive: [normalize]

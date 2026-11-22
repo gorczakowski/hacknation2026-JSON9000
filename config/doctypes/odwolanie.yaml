@@ -1,0 +1,127 @@
+# Odwołanie do Krajowej Izby Odwoławczej (appeal)
+name: odwolanie
+template: odwolanie.json
+
+classify:
+  description: "Odwołanie wnoszone przez wykonawcę (Odwołujący) do Prezesa Krajowej Izby Odwoławczej przeciwko czynnościom lub zaniechaniom Zamawiającego, z zarzutami i żądaniami."   # used by the model when the rules are not sure
+  threshold: 5
+  rules:
+    - {pattern: '^\s*odwołani\s?e\b', weight: 3}          # heading; OCR may merge it with the next line or split letters
+    - {pattern: '^\s*odwołujący\s*:', weight: 3}
+    - {pattern: '^\s*zamawiający\s*:', weight: 1}
+    - {pattern: 'krajow\w+\s+izb\w+\s+odwoławcz', weight: 1}
+    - {pattern: 'wnosz[ęe]\s+(odwołanie|o)\b', weight: 1, anywhere: true}
+    - {pattern: '^\s*wyrok\b|^\s*postanowienie\b|^\s*sygn\.\s*akt|izba\s+orzeka', weight: -5}   # KIO rulings (appeals cite rulings in the body, so anchor to line start)
+    - {pattern: 'ogłoszenie\s+o\s+zamówieniu\s*$|^\s*sekcja\s+[ivx]+', weight: -3}
+    - {pattern: 'udziela\w*\s+(niniejszym\s+)?pe\wnomocnictwa|ustanawia\w*\s+pe\wnomocnik', weight: -3}
+
+sections:
+  zamawiajacy:
+    start: ['^\s*zamawiający\s*:']
+    end: ['^\s*odwołujący', '^\s*wykonawca\s+wybrany', '^\s*dotyczy', 'prezes\s+krajowej', '^\s*krajowa\s+izba', '^\s*odwołanie\s*$', '^\s*wpis\s+od']
+    max_chars: 1500
+  odwolujacy:
+    start: ['^\s*odwołujący\s*:']
+    end: ['^\s*zamawiający', '^\s*wykonawca\s+wybrany', '^\s*dotyczy', 'prezes\s+krajowej', '^\s*krajowa\s+izba', '^\s*odwołanie\s*$', '^\s*wpis\s+od']
+    max_chars: 2000
+  dotyczy:
+    start: ['^\s*dotyczy\s*:?']
+    end: ['^\s*wartość\s+zamówienia', '^\s*wpis\s+od', '^\s*odwołanie\s*$', 'prezes\s+krajowej', '^\s*krajowa\s+izba', 'działając\s+w\s+imieniu']
+    max_chars: 1500
+
+fields:
+  OdwolanieKIO.data:
+    - {place_date: date, max_chars: 5000}
+  OdwolanieKIO.miejscowosc:
+    - {place_date: place, max_chars: 5000}
+  ZamowieniePubliczne.numer_bzp:
+    - {find: bzp, scope: dotyczy}
+    - {find: bzp}
+  ZamowieniePubliczne.numer_ted:
+    - {regex: '(?:Dziennik\w*\s+Urzędow\w*|Dz\.\s*U\.\s*UE|TED)[^\n]{0,60}?(?P<v>\d{4}\s*/\s*S\s*\d{1,3}\s*-\s*\d{5,7}|\d{5,7}\s*-\s*\d{4})', dotall: true}
+    - {find: ted, scope: dotyczy}
+  ZamowieniePubliczne.numer_postepowania:
+    - label: ['nr\s+referencyjny(\s+sprawy)?', 'numer\s+referencyjny', 'znak\s+sprawy', 'znak\s+postępowania', 'numer\s+postępowania', 'nr\s+postępowania', 'nr\s+sprawy', 'sygnatura']
+      type: token
+  ZamowieniePubliczne.tytul:
+    - {regex: 'pn\.\s*[„"«](?P<v>[^”"»]+)[”"»]', dotall: true}
+    - {regex: '[„"«](?P<v>[^”"»]{15,300})[”"»]', dotall: true, scope: dotyczy}
+
+lists:
+  Odwolujacy:
+    scope: odwolujacy
+    split: '^\s*1\)\s'          # consortium: keep the leader (item 1) only
+    max_items: 1
+    fields:
+      nazwa:
+        - {first_line: true, skip: '^(\d\)\s*)?(lider|partner|konsorcjum)\b|^$'}
+      krs:
+        - {label: ['KRS'], type: digits10}
+      nip:
+        - {label: ['NIP'], type: digits10}
+      regon:
+        - {regex: 'REGON\s*:?\s*(?P<v>\d{14}|\d{9})'}
+      pelnomocnik.imie_nazwisko:
+        - {names_after: ['reprezentowan\w*\s+przez(\s+pełnomocnik\w*)?', 'pełnomocnik\w*\s*:'], first: true, scope: odwolujacy, stop: ['adres', 'tel\.', 'e-mail']}
+      pelnomocnik.nazwa:
+        - {regex: 'adres\s+do\s+korespondencji\s*:?\s*(?P<v>[\s\S]+?)(?:,\s*(?:ul\.|al\.|pl\.|os\.)|\n\s*(?:ul\.|al\.))', scope: odwolujacy}
+        - {regex: '(?P<v>Kancelari\w*[^\n,]*)', scope: odwolujacy}
+      pelnomocnik.mail:
+        - {find: email, scope: odwolujacy}
+  Zamawiajacy:
+    scope: zamawiajacy
+    split: '^\s*\d\)\s'
+    max_items: 3
+    fields:
+      nazwa:
+        - {first_line: true, skip: '^(\d\)\s*)?(zamawiający|lider|partner)\b|^$'}
+      krs:
+        - {label: ['KRS'], type: digits10}
+      nip:
+        - {label: ['NIP'], type: digits10}
+      regon:
+        - {regex: 'REGON\s*:?\s*(?P<v>\d{14}|\d{9})'}
+
+powod:
+  # czynnosc_powod_id / czynnosc_opis / czynnosc_dzien, decided by the FIRST challenged action.
+  # Step 1 - find the passage that names the challenged action(s):
+  passage:
+    start: ['wnosz[ęe]\s+(odwołanie\s+)?(wobec|od|o)\b', 'odwołanie\s+od\s+czynno', 'wobec\s*:']
+    fallback_start: ['Zamawiający\s+w\s+dniu']          # used when no start phrase is found
+    end: ['zarzut\s+nr', 'zarzucam', 'zarzuty', 'uzasadnienie', 'w\s+zwi[aą]zku\s+z\s+powy']
+    first_item: '\b1\s*[).]\s*(.*?)(?=(;|,)?\s*\b2\s*[).]\s|$)'   # "1) X; 2) Y" -> X
+    max_chars: 700
+  # Step 2 - the first matching rule (top to bottom) gives the code; order matters ("zaniechanie" before the plain verb).
+  # Step 3 - czynnosc_opis is the label of that code; czynnosc_dzien is the first date in the first item.
+  rules:
+    - {id: 10, pattern: 'zaniecha\w*\s+unieważni|nie\s+unieważni'}
+    - {id: 9, pattern: 'unieważni'}
+    - {id: 8, pattern: 'zaniecha\w*\s+wyklucz|nie\s+wykluczy'}
+    - {id: 3, pattern: 'wyklucz'}
+    - {id: 7, pattern: 'zaniecha\w*\s+odrzuc|nie\s+odrzuci'}
+    - {id: 1, pattern: 'odrzuc'}
+    - {id: 2, pattern: 'wyb[oó]r\w*\s+(jako\s+)?(najkorzystniejsz\w*\s+)?ofert|wybra\w*\s+ofert|najkorzystniejsz'}
+    - {id: 6, pattern: 'odpowiedzi|wyjaśnie'}
+    - {id: 5, pattern: 'modyfik|zmian\w*\s+(treści\s+)?(swz|specyfikacji)|zmieni\w*\s+(treść\s+)?(swz|specyfikacj)'}
+    - {id: 12, pattern: 'projektowan\w*\s+postanowie'}
+    - {id: 11, pattern: 'opis\w*\s+przedmiotu\s+zamówienia|\bopz\b'}
+    - {id: 4, pattern: 'specyfikacj|\bswz\b|ogłoszeni\w*\s+o\s+zamówieniu'}
+  labels:
+    1: "Decyzja o odrzuceniu oferty"
+    2: "Ogłoszenie wyboru oferty"
+    3: "Decyzja o wykluczeniu wykonawcy"
+    4: "Publikacja specyfikacji warunków zamówienia (SWZ)"
+    5: "Modyfikacja treści SWZ"
+    6: "Odpowiedzi/wyjaśnienia do SWZ"
+    7: "Zaniechanie odrzucenia oferty"
+    8: "Zaniechanie wykluczenia wykonawcy"
+    9: "Decyzja o unieważnieniu postępowania"
+    10: "Zaniechanie unieważnienia postępowania"
+    11: "Opis przedmiotu zamówienia (OPZ)"
+    12: "Projektowane postanowienia umowy"
+
+derive: [powod_and_date, przez_pelnomocnika, prowadzacy_postepowanie, normalize]
+
+# Model fallback for fields: fill = rules first, model fills gaps; model_first = model wins, rules fill gaps; off
+llm:
+  mode: fill

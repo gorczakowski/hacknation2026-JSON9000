@@ -1,0 +1,13 @@
+# JSON9000 - Odwolania2json (HackNation 2026, UZP challenge)
+services:
+  json9000:
+    build: .
+    image: json9000:latest        # Docker image names must be lowercase
+    container_name: JSON9000
+    env_file:
+      - path: .env                # API key for the model fallback (ARK_API_KEY=...); without it: rules only
+        required: false
+    volumes:
+      - ./input:/app/input:ro
+      - ./output:/app/output
+      - ./evidence:/app/evidence  # where each value came from (not scored)

@@ -1,0 +1,13 @@
+hacknation-2026/
+.venv*/
+.env
+__pycache__/
+out/
+models/
+/input/
+/output/
+/evidence/
+*_evidence/
+UZP - *.pdf
+.venv-*/
+/*.pdf

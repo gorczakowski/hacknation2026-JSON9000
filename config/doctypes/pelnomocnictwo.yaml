@@ -1,0 +1,59 @@
+# Pełnomocnictwo (power of attorney)
+name: pelnomocnictwo
+template: pelnomocnictwo.json
+
+classify:
+  description: "Pełnomocnictwo: mocodawca (firma lub osoba) udziela pełnomocnictwa wskazanym osobom (pełnomocnikom), np. do reprezentowania w postępowaniu przed KIO."   # used by the model when the rules are not sure
+  threshold: 4
+  rules:
+    - {pattern: '^\s*pe\wnomocnictwo(\s+(procesowe|szczególne|ogólne|rodzajowe))?\s*$', weight: 4}   # heading; \w: OCR turns ł into l/h/t
+    - {pattern: 'udziela\w*\s+(niniejszym\s+)?pe\wnomocnictwa|ustanawia\w*\s+pe\wnomocnik|upoważniam|umocowan', weight: 3}
+    - {pattern: 'mocodaw', weight: 1}
+    - {pattern: '^\s*odwołujący\s*:|^\s*odwołani\s?e\b|wnosz[ęe]\s+odwołanie', weight: -4}
+    - {pattern: 'potwierdzeni\w*\s+(wykonania\s+)?przelewu|rachunek\s+(odbiorcy|nadawcy)', weight: -3}
+    - {pattern: '^\s*wyrok\b|^\s*sygn\.\s*akt|izba\s+orzeka', weight: -4}
+
+sections:
+  mocodawcy:   # from the top of the document to the phrase granting the power
+    start: ['\A']
+    end: ['udziela\w*\s+(niniejszym\s+)?pełnomocnictwa', 'ustanawia\w*\s+pełnomocnik', 'upoważniam', '§\s*2']
+  pelnomocnicy:
+    start: ['udziela\w*\s+(niniejszym\s+)?pełnomocnictwa\s*:?', 'ustanawia\w*\s+pełnomocnik\w*\s*:?', 'upoważniam\w*\s*:?']
+    end: ['do\s+reprezentowania', 'do\s+działania', 'pełnomocnictwo\s+udzielone', 'w\s+postępowaniu', '§\s*3', '\n\s*\n']
+    max_chars: 400
+
+lists:
+  mocodawca:
+    scope: mocodawcy
+    split: '(?<![\w.])\d\)\s'     # consortium: "1) Firma ..., 2) Firma ..."
+    max_items: 4
+    fields:
+      data.nazwa:
+        - regex: 'pod\s+firmą\s+(?P<v>[^,\n]+)'
+        - regex: '(?P<v>[A-ZŁŚŻŹĆ0-9][\w&"„”\-–. ]{1,80}?\s(?:sp\.\s?z\s?o\.\s?o\.(?:\s?sp\.\s?k\.)?|sp\.\s?k\.|sp\.\s?j\.|sp\.\s?p\.|S\.A\.|spółka\s+akcyjna|spółka\s+z\s+ograniczoną\s+odpowiedzialnością|spółka\s+jawna|spółka\s+komandytowa|spółka\s+partnerska))'
+      data.imie_nazwisko:
+        - regex: 'niżej\s+podpisan\w*\s+(?P<v>[A-ZŁŚŻŹĆ][\wąćęłńóśźż]+\s+[A-ZŁŚŻŹĆ][\wąćęłńóśźż\-]+)'
+      data.krs:
+        - label: ['KRS(\s+pod\s+numerem)?', 'pod\s+numerem\s+KRS']
+          type: digits10
+      data.nip:
+        - label: ['NIP']
+          type: digits10
+
+  pelnomocnicy:
+    from_names:
+      - names_after: ['\A']
+        scope: pelnomocnicy
+    name_field: imie_nazwisko
+    max_items: 5
+    fields:
+      pesel:
+        - label: ['PESEL']
+          type: digits11
+          scope: pelnomocnicy
+
+derive: [mocodawca_typ, signatories, normalize]
+
+# Model fallback for fields: fill = rules first, model fills gaps; model_first = model wins, rules fill gaps; off
+llm:
+  mode: model_first

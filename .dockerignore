@@ -1,0 +1,13 @@
+.git
+.venv*
+hacknation-2026
+out
+models
+naive
+eval
+**/__pycache__
+input
+output
+output_evidence
+*.pdf
+.env

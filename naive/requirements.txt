@@ -1,0 +1,4 @@
+openai>=1.50
+pypdfium2>=4.30
+pillow>=10
+python-dotenv>=1.0
