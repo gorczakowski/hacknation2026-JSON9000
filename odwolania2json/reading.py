@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -66,9 +67,19 @@ class MinerUOCR:
         return bool(self.python) and Path(self.python).exists()
 
     def ocr(self, path: Path, pages: list[int] | None = None) -> list[str]:
-        """OCR the whole PDF (MinerU works per document); raises OCRError with MinerU's own message on failure."""
+        """OCR the whole PDF (MinerU works per document); raises OCRError with MinerU's own message on failure.
+
+        If MinerU is installed in this interpreter (the Docker image), it runs in-process, so its OCR models are
+        loaded once per run instead of once per scan. Otherwise it runs in its own venv as a subprocess."""
         if not self.available():
             raise OCRError("OCR engine not available (MinerU interpreter not found; set ocr.python in pipeline.yaml)")
+        if self.python == sys.executable:
+            with self.lock:
+                try:
+                    from ._mineru_worker import parse_pages
+                    return parse_pages(str(path), self.tier)
+                except Exception as e:  # noqa: BLE001 - report MinerU's own message
+                    raise OCRError(f"MinerU: {e!r}"[:500]) from e
         script = Path(__file__).with_name("_mineru_worker.py")
         env = dict(os.environ)
         if self.cache_dir:  # explicit, writable model/cache location (MinerU and Hugging Face downloads)
@@ -165,12 +176,52 @@ def default_mineru_python() -> str | None:
     return None
 
 
+class FallbackOCR:
+    """Primary engine (MinerU: more accurate, ~15-35 s per scan) with a faster fallback (Tesseract: ~4-8 s).
+
+    The fallback is used for a document when the primary fails on it, and for all documents once
+    `fallback_after_s` seconds have passed since the start of the run - a time safety net, like the deadline:
+    runs that finish earlier never use it."""
+
+    def __init__(self, primary, fallback, fallback_after_s: float | None):
+        self.primary, self.fallback, self.after = primary, fallback, fallback_after_s
+        self.t0 = time.time()
+        self.used_fallback = 0
+
+    def available(self) -> bool:
+        return self.primary.available() or (self.fallback is not None and self.fallback.available())
+
+    def ocr(self, path: Path, pages: list[int] | None = None) -> list[str]:
+        late = self.after is not None and time.time() - self.t0 > self.after
+        if not late and self.primary.available():
+            try:
+                return self.primary.ocr(path, pages)
+            except OCRError as e:
+                if self.fallback is None or not self.fallback.available():
+                    raise
+                log.warning("primary OCR failed for %s (%s); using fallback", path.name, e)
+        if self.fallback is None or not self.fallback.available():
+            return self.primary.ocr(path, pages)
+        self.used_fallback += 1
+        return self.fallback.ocr(path, pages)
+
+
 def make_ocr(cfg: dict):
-    engine = (cfg or {}).get("engine", "mineru")
-    if engine == "tesseract":
-        return TesseractOCR(int(cfg.get("tesseract_dpi", 300)))
-    return MinerUOCR(cfg.get("python") or default_mineru_python(), cfg.get("tier", "flash"),
-                     Path(cfg["cache_dir"]) if cfg.get("cache_dir") else None)
+    cfg = cfg or {}
+
+    def build(engine):
+        if engine == "tesseract":
+            return TesseractOCR(int(cfg.get("tesseract_dpi", 300)))
+        if engine == "mineru":
+            return MinerUOCR(cfg.get("python") or default_mineru_python(), cfg.get("tier", "flash"),
+                             Path(cfg["cache_dir"]) if cfg.get("cache_dir") else None)
+        raise ValueError(f"unknown OCR engine {engine}")
+
+    primary = build(cfg.get("engine", "mineru"))
+    fb = cfg.get("fallback_engine")
+    if not fb or fb == cfg.get("engine"):
+        return primary
+    return FallbackOCR(primary, build(fb), cfg.get("fallback_after_s"))
 
 
 if __name__ == "__main__":  # quick manual check

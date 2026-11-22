@@ -9,6 +9,10 @@ ocr:
   python: null            # interpreter of the MinerU venv; null = auto-detect .venv-mineru, or the current one
   cache_dir: null         # writable folder for OCR model files (null = MinerU default ~/.mineru)
   tesseract_dpi: 300
+  fallback_engine: tesseract   # used when MinerU fails on a document, and for all scans after fallback_after_s
+  # Safety net only (like runtime.deadline_s): after this many seconds remaining scans use the faster Tesseract,
+  # so a scan-heavy set still finishes in time. Runs that finish earlier never use it.
+  fallback_after_s: 1500
 
 # Model fallback (rules stay in charge where they are sure). OpenAI-compatible chat API.
 llm:
