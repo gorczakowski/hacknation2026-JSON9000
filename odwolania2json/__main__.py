@@ -86,7 +86,7 @@ def main(argv=None) -> int:
         llm = None
     hcfg = pipeline_cfg.get("hybrid", {}) or {}
     rt = pipeline_cfg.get("runtime", {}) or {}
-    deadline = args.deadline if args.deadline is not None else float(rt.get("deadline_s", 2400))
+    deadline = args.deadline if args.deadline is not None else float(rt.get("deadline_s", 3000))
     workers = args.workers or int(rt.get("workers", 4))
     print(f"OCR: {'off' if ocr is None else ocfg.get('engine', 'mineru')} | model: "
           f"{'off (rules only)' if llm is None else lcfg.get('model') + ' @ ' + lcfg.get('base_url')} | workers: {workers}")
@@ -99,8 +99,8 @@ def main(argv=None) -> int:
     def run(pdf: Path) -> str:
         rel = pdf.relative_to(args.input)
         cached = (args.ocr_cache / rel).with_suffix(".txt") if args.ocr_cache else None
-        # TIME GUARD - only a safety net against exceeding the evaluator's time limit (150 PDFs / 45 min).
-        # It changes nothing for runs that finish within `runtime.deadline_s` (default 2400 s = 40 min): it is
+        # TIME GUARD - only a safety net against exceeding the evaluator's time limit (150 PDFs / 60 min).
+        # It changes nothing for runs that finish within `runtime.deadline_s` (default 3000 s = 50 min): it is
         # only consulted when a run is still going after that point. Then remaining documents are processed with
         # rules only (no OCR, no model calls) so that every PDF still gets its output before the limit.
         late = time.time() - t0 > deadline
@@ -123,7 +123,7 @@ def main(argv=None) -> int:
 
     t0 = time.time()
     # Hard stop for work already under way at the deadline: model retries and the MinerU subprocess end by
-    # deadline + stop_grace_s (default 3 min, i.e. 43 min); the document then keeps its rules result.
+    # deadline + stop_grace_s (default 3 min, i.e. 53 min); the document then keeps its rules result.
     stop_at = t0 + deadline + float(rt.get("stop_grace_s", 180))
     if llm is not None:
         llm.stop_at = stop_at

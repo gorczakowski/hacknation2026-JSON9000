@@ -45,5 +45,6 @@ ls output/ && cat output/*.json | head
 ## 5. Notes
 - Runs with no model at all if `.env` is missing or the API is down (rules only, F1 ~0.956 on training data).
 - On 2 CPUs: ~30 min for our 226 training PDFs (30 of them scans). The time safety nets switch scans to Tesseract
-  after 30 min and to rules only after 40 min (`config/pipeline.yaml`), so a scan-heavy set still finishes.
+  after 40 min and to rules only after 50 min (`config/pipeline.yaml`), so a scan-heavy set still finishes within
+  the 60-minute limit (work under way ends by 53 min).
 - Don't run `docker system prune -a` after building; it would delete the image.

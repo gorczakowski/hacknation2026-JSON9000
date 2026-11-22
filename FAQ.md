@@ -136,6 +136,16 @@ Add newer entries at the top of each section.
   - `2025_S 112-383751.pdf`
   - `prowadzenie_postepowania_odwolawczego.pdf`
 
+## ⚠⚠⚠ Time limit raised to 60 min per 150 PDFs (Discord, 11-22 morning) `[D]`
+- "W związku z tym ograniczeniem wydłużamy czas max z 45 min do 60 na 150 plików" (because the VMs are weaker, the
+  maximum time goes from 45 to 60 min for 150 files). _rk 08:45, answering complaints that the 2 vCPU / 16 GB VMs are
+  much slower than a laptop. The official README still says 45 min (checked 11-22, last commit eadffbc 00:38).
+- Our time safety nets follow it (`config/pipeline.yaml`): MinerU 0-40 min, Tesseract 40-50 min, rules only after
+  50 min, work under way ends by 53 min. Worst case of 150 scans on 2 CPUs: all of them get OCR.
+- Same morning, other answers: a **presentation PDF is enough**, no demo recording (_rk 07:56). An LLM must be used
+  **directly from the provider's API**, not through OpenRouter (_rk 07:55). A solution that doesn't need an LLM may be
+  submitted **without an API key** (_rk 07:56).
+
 ## ⚠⚠ Evaluation on our own Azure VM (`hacknation-2026/VM.md`, 11-22 00:38): this replaces the laptop
 - **Request a VM via the form:** https://forms.cloud.microsoft/e/HRFJjEcqMF (one per team; team names are checked against registrations). Login, password and IP come from the organizers.
 - **Team access is cut off on 22.11.2026 at 11:00.** The solution is evaluated as left. Background services and containers keep running.

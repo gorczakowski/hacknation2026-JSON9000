@@ -35,8 +35,8 @@ PDF ─► read ───────────► classify ──────
 - **Evidence.** For every document, `evidence/<name>.json` records the type scores, who decided (rules or model),
   and for each value the method and the surrounding text it came from. Check-digit results for NIP/REGON/PESEL/IBAN
   are reported there too (never used to change values).
-- **Safety nets for the time limit.** MinerU is used for the first 30 minutes, then the remaining scans use the faster
-  Tesseract, and after 40 minutes the remaining documents are processed with rules only, so every PDF still gets its output. Runs that finish earlier
+- **Safety nets for the time limit.** MinerU is used for the first 40 minutes, then the remaining scans use the faster
+  Tesseract, and after 50 minutes (the limit is 60 minutes for 150 PDFs) the remaining documents are processed with rules only, so every PDF still gets its output. Runs that finish earlier
   are not affected.
 
 ## Running it
