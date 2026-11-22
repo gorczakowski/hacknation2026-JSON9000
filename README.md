@@ -43,14 +43,14 @@ PDF ─► read ───────────► classify ──────
 
 **On the evaluation server** (see [RUN.md](RUN.md)):
 ```bash
-cd /opt/solution && docker compose run --rm -T --name JSON9000 json9000
+cd /opt/solution && docker compose run --rm -T --name JSON9000-BATCH json9000
 ```
 
 **Locally with Docker** (input in `./input`, results in `./output`):
 ```bash
 cp .env.example .env            # put ARK_API_KEY=... in it (optional: without it the program runs rules-only)
 docker compose build
-docker compose run --rm -T --name JSON9000 json9000
+docker compose run --rm -T --name JSON9000-BATCH json9000
 ```
 
 **Locally with Python 3.13+** (without Docker; OCR needs MinerU and/or `tesseract` installed):
@@ -62,6 +62,23 @@ python -m odwolania2json --input input --output output
 Useful options: `--no-llm` (rules only), `--ocr-engine tesseract`, `--doctype config/examples/orzeczenie_kio.yaml`
 (add a document type), `--check-config` (validate configuration and exit), `--strict` (non-zero exit if a scan could
 not be read), `-v` (log details).
+
+## Browser UI
+
+Upload a PDF (or open one of the training examples) and see the output JSON next to the page, with every value
+outlined where it was read: exact glyph boxes on text PDFs, OCR word/block boxes on scans. Colours say where a value
+came from: **rule** from the YAML (blue), **model** (red), **derived** from other fields (grey). Clicking a field
+shows the template's description of the field, how it was read, and the exact YAML rule. The "Typy dokumentów" tab
+adds a document type from a YAML file (e.g. [config/examples/orzeczenie_kio.yaml](config/examples/orzeczenie_kio.yaml))
+and switches types on and off; "Przetwórz ponownie" then re-runs the document with them. No code changes.
+
+```bash
+python -m odwolania2json.ui --samples hacknation-2026/dane        # http://127.0.0.1:8000
+docker compose --profile ui up -d json9000-ui                      # http://<host>:8000 (same image)
+```
+
+It runs the same pipeline and configuration as the batch command, one document at a time. The batch command never
+imports it. Options: `--no-llm`, `--ocr-engine`, `--doctype`, `--host 0.0.0.0`, `--port`, `--max-mb`, `--max-pages`.
 
 ## Configuration
 
@@ -99,6 +116,8 @@ rulings) was added this way; enabling it changes only the ruling's output and le
 | [validate.py](odwolania2json/validate.py) | configuration checks at startup |
 | [calibrate.py](odwolania2json/calibrate.py) | threshold helper for document types |
 | [validators.py](odwolania2json/validators.py) | NIP / REGON / PESEL / IBAN check digits (reported, not enforced) |
+| [ui.py](odwolania2json/ui.py) | browser UI server (standard library only), page images, field provenance, switching document types |
+| [layout.py](odwolania2json/layout.py) | UI only: page geometry (glyph / OCR boxes) and finding each value on the page |
 
 Evaluation and research tooling is in [research/eval/](research/eval/) (F1 scorer following the organizers' rules, OCR "findability",
 model and decision-model benchmarks) and [research/naive/](research/naive/) (pure-model baselines). Notes: [NOTES.md](NOTES.md)

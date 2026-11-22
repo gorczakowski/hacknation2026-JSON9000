@@ -33,7 +33,7 @@ docker images json9000        # ~3.3 GB
 ```bash
 rm -rf output/* evidence
 cp <a few sample PDFs> input/
-sudo docker compose run --rm -T --name JSON9000 json9000     # the command from RUN.md
+sudo docker compose run --rm -T --name JSON9000-BATCH json9000     # the command from RUN.md
 ls output/ && cat output/*.json | head
 ```
 - Check: every PDF has a JSON with the same name, unrelated documents have `{}`, and the summary line shows

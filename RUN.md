@@ -3,7 +3,7 @@
 Run from `/opt/solution` (needs Docker; the image is already built on this server):
 
 ```bash
-docker compose run --rm -T --name JSON9000 json9000
+docker compose run --rm -T --name JSON9000-BATCH json9000
 ```
 
 - Reads every PDF in `/opt/solution/input` (subfolders included) and writes one JSON per PDF to
@@ -22,5 +22,5 @@ docker compose run --rm -T --name JSON9000 json9000
 ## If the image is missing (e.g. after `docker system prune`)
 ```bash
 docker compose build        # needs internet: Python packages + OCR models (~1-2 GB)
-docker compose run --rm -T --name JSON9000 json9000
+docker compose run --rm -T --name JSON9000-BATCH json9000
 ```

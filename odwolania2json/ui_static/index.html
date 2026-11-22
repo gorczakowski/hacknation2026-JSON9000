@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JSON9000: podgląd ekstrakcji</title>
+<link rel="preload" href="/static/fonts/atkinson-next-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><span class="brand-name">JSON9000</span><span class="brand-sub">Odwołania2JSON</span></div>
+  <button id="pick" class="btn btn-primary" type="button">Wgraj PDF</button>
+  <input id="file" type="file" accept="application/pdf,.pdf" hidden>
+  <button id="rerun" class="btn" type="button" disabled>Przetwórz ponownie</button>
+  <label class="recent" id="recent-wrap" hidden>
+    <span class="sr">Ostatnie dokumenty</span>
+    <select id="recent"></select>
+  </label>
+  <div class="bar-fill"></div>
+  <label class="switch" id="llm-wrap" title="Model językowy uzupełnia pola, których reguły nie znalazły">
+    <input id="llm" type="checkbox" role="switch">
+    <span class="switch-track" aria-hidden="true"></span>
+    <span class="switch-text" id="llm-text">Model</span>
+  </label>
+</header>
+
+<main class="work">
+  <section class="desk" id="desk" aria-label="Strony dokumentu">
+    <div class="empty" id="empty">
+      <div class="sheet">
+        <p class="sheet-title">Upuść tutaj PDF z akt sprawy</p>
+        <p class="sheet-text">Odwołanie, pełnomocnictwo albo potwierdzenie przelewu. Skany też. Zobaczysz wynikowy JSON
+          i miejsce na stronie, z którego pochodzi każda wartość.</p>
+        <button class="btn btn-primary" type="button" data-pick>Wybierz plik</button>
+        <p class="sheet-limits" id="limits"></p>
+      </div>
+      <div class="samples" id="samples" hidden>
+        <p class="samples-title">Albo otwórz przykład z danych treningowych</p>
+        <input class="samples-filter" id="samples-filter" type="search" placeholder="Szukaj, np. skany, przelew, 07" aria-label="Szukaj przykładu">
+        <ul class="samples-list" id="samples-list"></ul>
+      </div>
+    </div>
+    <div class="busy" id="busy" hidden>
+      <div class="sheet">
+        <p class="sheet-title" id="busy-name"></p>
+        <ol class="steps" id="steps"></ol>
+        <p class="sheet-text" id="busy-note"></p>
+      </div>
+    </div>
+    <div class="pages" id="pages"></div>
+  </section>
+
+  <aside class="panel" aria-label="Wynik">
+    <div class="tabs" role="tablist">
+      <button role="tab" id="t-fields" aria-controls="p-fields" aria-selected="true">Pola</button>
+      <button role="tab" id="t-json" aria-controls="p-json" aria-selected="false" tabindex="-1">JSON</button>
+      <button role="tab" id="t-types" aria-controls="p-types" aria-selected="false" tabindex="-1">Typy dokumentów</button>
+    </div>
+
+    <div class="tabpanel" role="tabpanel" id="p-fields" aria-labelledby="t-fields">
+      <div class="placeholder" id="fields-empty">
+        <p>Tu pojawią się pola z dokumentu. Kolor podkreślenia mówi, skąd jest wartość. Tak samo jest zaznaczona na stronie.</p>
+        <ul class="legend-static">
+          <li><span class="ink prov-rules">reguła</span> z pliku YAML typu dokumentu</li>
+          <li><span class="ink prov-model">model</span> językowy</li>
+          <li><span class="ink prov-derived">wyliczone</span> z innych pól</li>
+        </ul>
+      </div>
+      <div id="result" hidden>
+        <div class="summary">
+          <p class="doc-file" id="doc-file"></p>
+          <h1 class="doc-type" id="doc-type"></h1>
+          <p class="doc-how" id="doc-how"></p>
+          <p class="doc-warn" id="doc-warn" hidden></p>
+        </div>
+        <details class="why" id="why">
+          <summary>Dlaczego ten typ</summary>
+          <p class="why-text">Każdy typ ma w swoim pliku YAML wzorce z punktami. Typ jest wybierany, gdy suma
+            punktów osiąga próg (pionowa kreska). Kliknij typ, żeby zobaczyć jego wzorce: pasujące są ciemne.</p>
+          <div id="scores"></div>
+        </details>
+        <div class="legend-row">
+          <div class="legend" id="legend" role="img"></div>
+          <label class="check"><input type="checkbox" id="show-empty"> puste pola</label>
+        </div>
+        <div id="fields" class="fields"></div>
+      </div>
+    </div>
+
+    <div class="tabpanel" role="tabpanel" id="p-json" aria-labelledby="t-json" hidden>
+      <div class="json-actions">
+        <a class="btn" id="json-download" href="#" download>Pobierz JSON</a>
+        <button class="btn" type="button" id="json-copy">Kopiuj</button>
+        <span class="json-note" id="json-note" role="status"></span>
+      </div>
+      <pre class="json" id="json"><span class="muted">Najpierw wgraj dokument.</span></pre>
+    </div>
+
+    <div class="tabpanel" role="tabpanel" id="p-types" aria-labelledby="t-types" hidden>
+      <p class="types-intro">Każdy typ dokumentu to jeden plik YAML: jak go rozpoznać, gdzie są jego sekcje i jak
+        odczytać każde pole. Dodaj nowy typ z pliku, włącz go i przetwórz dokument ponownie. Bez zmian w kodzie.</p>
+      <p class="types-status" id="types-status" role="status"></p>
+      <ul class="types" id="types"></ul>
+      <div class="types-add">
+        <button class="btn" type="button" id="add-type">Dodaj typ z pliku YAML</button>
+        <input id="type-file" type="file" accept=".yaml,.yml" hidden>
+        <p class="types-hint">Przykład do wypróbowania: config/examples/orzeczenie_kio.yaml (orzeczenia KIO).</p>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<div class="veil" id="veil" hidden><p>Upuść PDF, żeby go przetworzyć</p></div>
+<div class="toast" id="toast" role="alert" hidden></div>
+</body>
+</html>

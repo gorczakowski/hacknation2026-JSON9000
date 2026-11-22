@@ -1,9 +1,10 @@
 # JSON9000 - Odwolania2json (HackNation 2026, UZP challenge)
+name: json9000                    # Compose project name (must be lowercase); otherwise the folder name is used
 services:
   json9000:
     build: .
     image: json9000:latest        # Docker image names must be lowercase
-    container_name: JSON9000
+    container_name: JSON9000-BATCH
     env_file:
       - path: .env                # API key for the model fallback (ARK_API_KEY=...); without it: rules only
         required: false
@@ -11,3 +12,18 @@ services:
       - ./input:/app/input:ro
       - ./output:/app/output
       - ./evidence:/app/evidence  # where each value came from (not scored)
+
+  # Browser UI (optional, same image): upload a PDF, see the JSON and where each value is on the page.
+  # Not started by the batch command; start it with:  docker compose --profile ui up -d json9000-ui
+  json9000-ui:
+    image: json9000:latest
+    container_name: JSON9000-UI
+    profiles: ["ui"]
+    env_file:
+      - path: .env
+        required: false
+    entrypoint: ["python", "-m", "odwolania2json.ui"]
+    command: ["--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
