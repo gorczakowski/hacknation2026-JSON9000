@@ -5,7 +5,24 @@ from pathlib import Path
 import httpx2 as httpx
 from dotenv import load_dotenv
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from extract.focus import action_passage, first_item, powod_by_rules
+import re as _re
+import yaml as _yaml
+from odwolania2json.derive import action_passage as _passage, first_item
+
+_POWOD = _yaml.safe_load(Path(__file__).resolve().parent.parent.joinpath("config/doctypes/odwolanie.yaml")
+                         .read_text(encoding="utf-8"))["powod"]
+
+
+def action_passage(t):
+    return _passage(t, _POWOD.get("passage"))[0]
+
+
+def powod_by_rules(passage):
+    item = first_item(passage, _POWOD.get("passage")).lower()
+    for r in _POWOD["rules"]:
+        if _re.search(r["pattern"], item, _re.I):
+            return r["id"]
+    return None
 
 CRITERIA = {
     "1": "Odrzucenie oferty odwołującego (zamawiający odrzucił ofertę odwołującego).",

@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/img/json9000_stacked.png" alt="JSON9000 logo" width="420"></p>
+
 # JSON9000 — Odwołania2JSON
 
 Turns the documents of a KIO appeal case (PDF, text or scanned) into JSON:

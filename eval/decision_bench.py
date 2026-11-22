@@ -56,7 +56,7 @@ def load_items(task: str, state_chars: int):
         if task == "classify":
             items.append((str(rel), doc_type(gold), t[:state_chars] if t else "(brak tekstu)"))
         elif "OdwolanieKIO" in gold and t:
-            passage, _ = action_passage(t)
+            passage, _ = action_passage(t)  # odwolania2json.derive version returns (passage, start)
             items.append((str(rel), str(gold["OdwolanieKIO"]["czynnosc_powod_id"]), passage))
     return items
 
