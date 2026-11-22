@@ -488,9 +488,12 @@ function select(fi, { scroll = "page", force = false } = {}) {
 }
 
 // --- JSON ---------------------------------------------------------------------------------------------------
+// the server's text, as the batch writes it (JSON.stringify would print 17.0 as 17)
+const jsonText = (v) => v.output_text ?? JSON.stringify(v.output, null, 2);
+
 function renderJson() {
   const v = S.view;
-  const txt = JSON.stringify(v.output, null, 2);
+  const txt = jsonText(v);
   $("#json").innerHTML = esc(txt).replace(/(&quot;(?:[^&]|&(?!quot;))*?&quot;)(\s*:)?|\b(-?\d+(?:\.\d+)?)\b|\b(null|true|false)\b/g,
     (m, str, colon, n, lit) => str ? (colon ? `<span class="jk">${str}</span>${colon}` : `<span class="js">${str}</span>`) : n ? `<span class="jn">${n}</span>` : `<span class="jl">${lit}</span>`);
   const a = $("#json-download");
@@ -501,7 +504,7 @@ function renderJson() {
 async function copyJson() {
   if (!S.view) return;
   try {
-    await navigator.clipboard.writeText(JSON.stringify(S.view.output, null, 2));
+    await navigator.clipboard.writeText(jsonText(S.view));
     $("#json-note").textContent = "Skopiowano JSON.";
   } catch { $("#json-note").textContent = "Przeglądarka nie pozwoliła skopiować. Zaznacz tekst ręcznie."; }
   setTimeout(() => ($("#json-note").textContent = ""), 3000);

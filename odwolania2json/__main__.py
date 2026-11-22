@@ -20,6 +20,7 @@ from .pipeline import load_config, process_document
 from .llm import LLM
 from .reading import load_document, make_ocr
 from .validate import validate
+from .values import dump_output
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -112,7 +113,7 @@ def main(argv=None) -> int:
             read_errors.append((str(rel), doc.error))
         out = (args.output / rel).with_suffix(".json")
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        out.write_text(dump_output(data), encoding="utf-8")
         ev = (evidence_root / rel).with_suffix(".json")
         ev.parent.mkdir(parents=True, exist_ok=True)
         ev.write_text(json.dumps({"meta": meta, "evidence": evidence}, ensure_ascii=False, indent=2), encoding="utf-8")

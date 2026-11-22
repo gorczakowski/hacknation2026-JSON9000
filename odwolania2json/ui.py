@@ -38,6 +38,7 @@ from .llm import LLM
 from .pipeline import DocType, load_doctype, process_document
 from .reading import PDFIUM_LOCK, load_document, make_ocr, pages_needing_ocr, read_text_layer
 from .validate import validate
+from .values import dump_output
 
 log = logging.getLogger("odwolania2json.ui")
 STATIC = Path(__file__).with_name("ui_static")
@@ -416,6 +417,13 @@ def _class_rules(doc, dt: DocType, head_chars: int) -> list[dict]:
     return out
 
 
+def _shown(path: str, value) -> str | None:
+    """A number as the output file writes it (the browser would print 17.0 as 17)."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    return f"{value:.2f}" if path.rsplit(".", 1)[-1] == "kwota" else json.dumps(value)
+
+
 def build_view(job: Job, doctypes: list[DocType], data, meta, evidence, eng: Engine) -> dict:
     doc = job.doc
     scores = meta.get("class_scores", {})
@@ -438,7 +446,7 @@ def build_view(job: Job, doctypes: list[DocType], data, meta, evidence, eng: Eng
             fields.append({
                 "group": group, "path": path, "key": path.rsplit(".", 1)[-1],
                 "desc": comments.get(_noidx(path), ""), "value": value, "prov": prov,
-                "shown": json.dumps(value, ensure_ascii=False) if isinstance(value, (int, float)) and not isinstance(value, bool) else None,
+                "shown": _shown(path, value),
                 "method": (ev or {}).get("method"), "context": (ev or {}).get("context", ""),
                 "rule": _yaml(cfg) if cfg else None, "boxes": boxes, "check": checks.get(path),
                 "empty_list": isinstance(value, list) and not value and group != path.rsplit(".", 1)[0],
@@ -451,6 +459,8 @@ def build_view(job: Job, doctypes: list[DocType], data, meta, evidence, eng: Eng
         "model": eng.model_name if job.use_llm and eng.llm else None,
         "type_file": dt.source.name if dt and dt.source else None,
         "classify": classify, "fields": fields, "output": data,
+        # the text the batch writes (kwota as 17.00): JSON.stringify in the browser would print 17
+        "output_text": dump_output(data),
         "pages": [{"w": g.width, "h": g.height, "kind": g.kind} for g in job.geoms],
     }
 
@@ -540,7 +550,7 @@ def make_handler(eng: Engine, jobs: Jobs, samples: list[tuple[str, Path]], max_b
                     if not job.view:
                         return self._err(409, "Dokument jest jeszcze przetwarzany.")
                     name = Path(job.name).with_suffix(".json").name
-                    body = json.dumps(job.view["output"], ensure_ascii=False, indent=2).encode("utf-8")
+                    body = job.view["output_text"].encode("utf-8")
                     return self._send(200, body, "application/json; charset=utf-8",
                                       {"Content-Disposition": f"attachment; filename*=UTF-8''{_q(name)}"})
                 return self._json({"id": job.id, "name": job.name, "status": job.status, "stage": job.stage,

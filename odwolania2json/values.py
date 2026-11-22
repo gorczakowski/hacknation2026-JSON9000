@@ -5,6 +5,7 @@ Types: account, amount, date, digits10/9/11/14 (via `digits`), email, token, tex
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import date
 
@@ -209,3 +210,18 @@ def parse_value(kind: str, s: str):
     if kind.startswith("digits"):
         return parse_digits(s, int(kind[6:]))
     raise ValueError(f"unknown value type {kind}")
+
+
+# "kwota": 17.0 -> 17.00, as in oczekiwane-json/przelew.json (10000.00). Same number for any JSON reader.
+# Matches only a real key: inside a string value the quotes would be escaped (\"kwota\").
+_KWOTA_RE = re.compile(r'("kwota": )(-?\d+(?:\.\d+)?)(?=[,\n}])')
+
+
+def dump_output(data) -> str:
+    """The result JSON as written to output/ (and shown in the UI)."""
+    text = json.dumps(data, ensure_ascii=False, indent=2)
+
+    def two_places(m):
+        v = float(m.group(2))
+        return f"{m.group(1)}{v:.2f}" if float(f"{v:.2f}") == v else m.group(0)  # never change the number
+    return _KWOTA_RE.sub(two_places, text)

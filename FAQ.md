@@ -122,7 +122,7 @@ Add newer entries at the top of each section.
 
 **What types do the labels use?** `[V]`
 - `pesel` is a **string** in the labels (`"85120133547"`), even though the spec file shows a number. It is `null` in 110 of 115 cases.
-- `kwota` is a float (`200.0`).
+- `kwota` is a float (`200.0`). We write it with two decimals (`200.00`), as `oczekiwane-json/przelew.json` shows (`10000.00`); it is the same number for any JSON reader (`values.dump_output`).
 
 **Are file names stable?** `[R]` commits d1d980c and 84cc976 on 11-21 `[V]`
 - No. The organizer has started renaming `potwierdzenie_przelewu.pdf` → `przelew.pdf`. So far only `przyklad_01` and `przyklad_02` are done.

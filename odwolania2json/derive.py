@@ -160,12 +160,13 @@ def normalize(data, doc, dt, evidence):
                 elif k in ID_KEYS and isinstance(v, str):
                     d = re.sub(r"\D", "", v)
                     o[k] = d or None
+                # a notice number that does not parse is not one (seen: the model put the TED number in numer_bzp)
                 elif k == "numer_bzp" and isinstance(v, str):
                     r = V.parse_bzp(v)
-                    o[k] = r[0] if r else re.sub(r"\s+", "", v)
+                    o[k] = r[0] if r else None
                 elif k == "numer_ted" and isinstance(v, str):
                     r = V.parse_ted(v)
-                    o[k] = r[0] if r else v
+                    o[k] = r[0] if r else None
                 elif k == "kwota" and v is not None:
                     o[k] = abs(float(v))
                 elif k == "imie_nazwisko" and isinstance(v, str):
