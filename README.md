@@ -2,13 +2,13 @@
 
 # JSON9000 — Odwołania2JSON
 
-Zamienia dokumenty sprawy odwoławczej przed KIO (PDF z warstwą tekstową lub skan) na JSON:
-**odwołanie**, **pełnomocnictwo**, **potwierdzenie przelewu**. Każdy inny dokument dostaje `{}`.
-Przygotowane na wyzwanie UZP w ramach HackNation 2026.
+Program zamienia dokumenty ze sprawy odwoławczej przed KIO (pliki PDF z tekstem albo skany) na pliki JSON. Rozpoznaje
+trzy typy dokumentów: **odwołanie**, **pełnomocnictwo** i **potwierdzenie przelewu**. Dla każdego innego dokumentu
+zapisuje `{}`. Rozwiązanie zadania UZP na HackNation 2026.
 
-**Wynik na 226 treningowych plikach PDF** (60 spraw + 30 skanów + 16 dokumentów niezwiązanych), w kontenerze z 2 CPU,
-jak na maszynie ewaluacyjnej: **F1 0,988**, wszystkie 226 dokumentów poprawnie sklasyfikowane, łącznie 30 minut
-(szczegóły w [EXPERIMENTS.md](EXPERIMENTS.md)).
+**Wynik na 226 plikach PDF ze zbioru treningowego** (60 spraw, 30 skanów, 16 dokumentów niezwiązanych ze sprawą),
+w kontenerze z 2 procesorami, tak jak na maszynie ewaluacyjnej: **F1 0,988**, wszystkie 226 dokumentów poprawnie
+rozpoznane, całość w 30 minut (szczegóły w [EXPERIMENTS.md](EXPERIMENTS.md)).
 
 ## Jak to działa
 
@@ -21,26 +21,30 @@ PDF ─► odczyt ────────────► klasyfikacja ───
        (MinerU/Tesseract)   reguły nie są pewne                         są słabe)
 ```
 
-- **Najpierw reguły.** Każdy typ dokumentu jest opisany w jednym pliku YAML
-  ([config/doctypes/](config/doctypes/)): jak go rozpoznać, gdzie są jego części i jak odczytać każde pole.
-  Reguły są dokładne, wytłumaczalne, szybkie (226 PDF-ów w ok. 5 s bez OCR) i nigdy nie zmyślają wartości.
-- **Mały model tam, gdzie reguły są słabe.** Model językowy o otwartych wagach (**Qwen3.5-4B**, 4,66 mld parametrów,
-  Apache-2.0) jest wywoływany przez **ARK Labs** (polska firma, inferencja na serwerach w UE). Służy do:
-  - **klasyfikacji**, tylko gdy reguły nie są pewne (wynik blisko progu albo dwa typy z podobnym wynikiem)
-  - **pustych pól**: wygrywa odpowiedź reguł, model uzupełnia to, czego reguły nie znalazły
-  - **pełnomocnictw i skanów**: wygrywa odpowiedź modelu, reguły uzupełniają luki (tam reguły są słabsze)
-  - **kodu 1–12**, tylko gdy żadna reguła słów kluczowych nie pasuje do zdania o zaskarżonej czynności
-  Odpowiedzi modelu są sprawdzane przed użyciem (poprawny IBAN, istniejąca data, właściwa liczba cyfr) i odrzucane,
-  jeśli są nieprawdopodobne.
-- **Lokalny OCR.** MinerU (wariant flash, małe modele ONNX, ok. 270 MB) działa lokalnie na CPU. Tesseract (język
-  polski) jest szybszą alternatywą. Nie ma żadnego API do OCR.
-- **Pochodzenie wartości.** Dla każdego dokumentu plik `evidence/<nazwa>.json` zapisuje punkty każdego typu, kto
-  zdecydował (reguły czy model), a dla każdej wartości metodę i otaczający tekst, z którego pochodzi. Są tam też wyniki
-  sprawdzenia cyfr kontrolnych NIP/REGON/PESEL/IBAN (nigdy nie służą do zmiany wartości).
-- **Zabezpieczenia przed przekroczeniem limitu czasu.** Przez pierwsze 40 minut skany czyta MinerU, potem pozostałe
-  skany czyta szybszy Tesseract, a po 50 minutach (limit to 60 minut na 150 PDF-ów) pozostałe dokumenty są
-  przetwarzane wyłącznie regułami, więc każdy PDF i tak dostaje swój wynik. Przebiegi, które kończą się wcześniej,
-  działają bez zmian.
+- **Najpierw reguły.** Każdy typ dokumentu jest opisany w jednym pliku YAML ([config/doctypes/](config/doctypes/)):
+  po czym go rozpoznać, gdzie są jego części i jak odczytać każde pole. Reguły są precyzyjne, łatwe do wyjaśnienia,
+  szybkie (184 pliki PDF z warstwą tekstową w niecałe 4 sekundy) i nigdy nie wymyślają wartości.
+- **Mały model tam, gdzie reguły nie wystarczają.** Korzystamy z otwartego modelu językowego **Qwen3.5-4B**
+  (4,66 mld parametrów, licencja Apache-2.0), udostępnianego przez **ARK Labs** (polska firma, serwery w UE).
+  Model jest używany:
+  - **do klasyfikacji**, tylko gdy reguły nie są pewne (wynik blisko progu albo dwa typy z podobnym wynikiem);
+  - **do uzupełniania pustych pól**: pierwszeństwo mają reguły, model wypełnia tylko to, czego reguły nie znalazły;
+  - **przy pełnomocnictwach i skanach**: pierwszeństwo ma model, a reguły uzupełniają braki (w tych dokumentach
+    reguły radzą sobie gorzej);
+  - **do ustalenia kodu czynności (1–12)**, tylko gdy żadna reguła oparta na słowach kluczowych nie pasuje do zdania
+    opisującego zaskarżoną czynność.
+
+  Każda odpowiedź modelu jest sprawdzana (poprawny IBAN, prawdziwa data, właściwa liczba cyfr), a wartości
+  nieprawdopodobne są odrzucane.
+- **OCR lokalnie.** MinerU (wersja flash, małe modele ONNX, ok. 270 MB) działa na procesorze w kontenerze.
+  Szybszą alternatywą jest Tesseract z polskim modelem języka. OCR nie korzysta z żadnego zewnętrznego API.
+- **Skąd pochodzi każda wartość.** Dla każdego dokumentu powstaje plik `evidence/<nazwa>.json`: punktacja każdego typu,
+  kto podjął decyzję (reguły czy model), a dla każdej wartości metoda odczytu i fragment tekstu, z którego ją wzięto.
+  Plik zawiera też wynik sprawdzenia cyfr kontrolnych NIP, REGON, PESEL i IBAN (tylko informacyjnie: na tej podstawie
+  wartości nie są zmieniane).
+- **Zabezpieczenia czasowe.** Przez pierwsze 40 minut skany odczytuje MinerU, później szybszy Tesseract, a po
+  50 minutach (limit to 60 minut na 150 plików PDF) pozostałe dokumenty są przetwarzane już tylko regułami. Dzięki temu
+  każdy plik PDF dostaje wynik. Przebiegów, które kończą się wcześniej, to nie dotyczy.
 
 ## Uruchomienie
 
@@ -49,84 +53,84 @@ PDF ─► odczyt ────────────► klasyfikacja ───
 cd /opt/solution && docker compose run --rm -T --name JSON9000-BATCH json9000
 ```
 
-**Lokalnie z Dockerem** (dane wejściowe w `./input`, wyniki w `./output`):
+**Lokalnie w Dockerze** (pliki wejściowe w `./input`, wyniki w `./output`):
 ```bash
-cp .env.example .env            # wpisz w nim ARK_API_KEY=... (opcjonalne: bez klucza program działa tylko na regułach)
+cp .env.example .env            # wpisz ARK_API_KEY=... (opcjonalnie; bez klucza działają tylko reguły)
 docker compose build
 docker compose run --rm -T --name JSON9000-BATCH json9000
 ```
 
-**Lokalnie z Pythonem 3.13+** (bez Dockera; OCR wymaga zainstalowanego MinerU i/lub `tesseract`):
+**Lokalnie w Pythonie 3.13+** (bez Dockera; do OCR potrzebny jest zainstalowany MinerU i/lub `tesseract`):
 ```bash
 pip install -r requirements.txt
 python -m odwolania2json --input input --output output
 ```
 
 Przydatne opcje: `--no-llm` (tylko reguły), `--ocr-engine tesseract`, `--doctype config/examples/orzeczenie_kio.yaml`
-(dodanie typu dokumentu), `--check-config` (sprawdzenie konfiguracji i zakończenie), `--strict` (niezerowy kod wyjścia,
-jeśli nie udało się odczytać skanu), `-v` (szczegółowe logi).
+(dodatkowy typ dokumentu), `--check-config` (tylko sprawdza konfigurację), `--strict` (kod wyjścia różny od zera, gdy
+nie udało się odczytać skanu), `-v` (więcej szczegółów w logu).
 
 ## Interfejs w przeglądarce
 
-Wgraj PDF (albo otwórz jeden z przykładów treningowych) i zobacz wynikowy JSON obok strony, z każdą wartością
-obrysowaną w miejscu, z którego została odczytana: dokładne ramki znaków w PDF-ach z warstwą tekstową, ramki słów lub
-bloków OCR na skanach. Kolory mówią, skąd pochodzi wartość: **reguła** z pliku YAML (niebieski), **model** (czerwony),
-**wyliczone** z innych pól (szary). Kliknięcie pola pokazuje jego opis z szablonu, sposób odczytu i dokładną regułę
-YAML. Zakładka „Typy dokumentów” dodaje typ dokumentu z pliku YAML (np.
-[config/examples/orzeczenie_kio.yaml](config/examples/orzeczenie_kio.yaml)) oraz włącza i wyłącza typy; „Przetwórz
-ponownie” przetwarza wtedy dokument jeszcze raz z tymi ustawieniami. Bez zmian w kodzie.
+Wgraj plik PDF (albo otwórz jeden z przykładów treningowych), a obok strony zobaczysz wynikowy JSON. Każda wartość jest
+zaznaczona na stronie w miejscu, z którego ją odczytano: w plikach z warstwą tekstową dokładnie co do znaku, na skanach
+według słów lub bloków z OCR. Kolor mówi, skąd pochodzi wartość: **reguła** z pliku YAML (niebieski), **model**
+(czerwony) albo **wyliczone** z innych pól (szary). Po kliknięciu pola widać jego opis z szablonu, sposób odczytu
+i dokładną regułę z YAML. W zakładce „Typy dokumentów” można dodać typ z pliku YAML (np.
+[config/examples/orzeczenie_kio.yaml](config/examples/orzeczenie_kio.yaml)) oraz włączać i wyłączać typy, a przycisk
+„Przetwórz ponownie” przetwarza dokument jeszcze raz z nowymi ustawieniami. Nie wymaga to żadnych zmian w kodzie.
 
 ```bash
 python -m odwolania2json.ui --samples hacknation-2026/dane        # http://127.0.0.1:8000
 docker compose --profile ui up -d json9000-ui                      # http://<host>:8000 (ten sam obraz)
 ```
 
-Interfejs używa tego samego potoku i tej samej konfiguracji co polecenie wsadowe, po jednym dokumencie. Polecenie
-wsadowe nigdy go nie importuje. Opcje: `--no-llm`, `--ocr-engine`, `--doctype`, `--host 0.0.0.0`, `--port`,
-`--max-mb`, `--max-pages`.
+Interfejs korzysta z tego samego przetwarzania i tej samej konfiguracji co tryb wsadowy, tylko dla pojedynczego
+dokumentu. Tryb wsadowy w ogóle go nie importuje. Opcje: `--no-llm`, `--ocr-engine`, `--doctype`, `--host 0.0.0.0`,
+`--port`, `--max-mb`, `--max-pages`.
 
 ## Konfiguracja
 
 | Plik | Co ustawia |
 |---|---|
-| [config/pipeline.yaml](config/pipeline.yaml) | silnik OCR i zapasowy, dostawca / model / nazwa klucza, kiedy pytany jest model (`hybrid`), zabezpieczenia czasowe, równoległość |
-| [config/doctypes/*.yaml](config/doctypes/) | jeden plik na typ dokumentu, ładowane domyślnie |
-| [config/templates/*.json](config/templates/) | szablony wyników od organizatorów (z komentarzami do pól, używanymi też jako instrukcje dla modelu) |
-| [config/examples/](config/examples/) | dodatkowe typy dokumentów, domyślnie nieładowane (włączane przez `--doctype`) |
+| [config/pipeline.yaml](config/pipeline.yaml) | silnik OCR i silnik zapasowy; dostawcę, model i nazwę zmiennej z kluczem API; kiedy pytać model (`hybrid`); zabezpieczenia czasowe; równoległość |
+| [config/doctypes/*.yaml](config/doctypes/) | po jednym pliku na typ dokumentu, ładowane domyślnie |
+| [config/templates/*.json](config/templates/) | szablony wyników od organizatorów (komentarze do pól służą też jako instrukcje dla modelu) |
+| [config/examples/](config/examples/) | dodatkowe typy dokumentów, domyślnie wyłączone (włącza się je opcją `--doctype`) |
 | `.env` | klucze API (nigdy nie trafiają do repozytorium) |
 
-Zmiana modelu to zmiana konfiguracji, np. Ministral-14B na unijnym endpoincie Mistrala albo Qwen3.5-9B w IONOS
-(zakomentowane przykłady w `pipeline.yaml`).
+Zmiana modelu wymaga tylko zmiany konfiguracji, np. na Ministral-14B przez unijny endpoint Mistrala albo na
+Qwen3.5-9B w IONOS (zakomentowane przykłady są w `pipeline.yaml`).
 
-## Dodanie nowego typu dokumentu (bez zmian w kodzie)
+## Nowy typ dokumentu bez zmian w kodzie
 
-Zob. **[docs/ADDING_A_DOCTYPE.md](docs/ADDING_A_DOCTYPE.md)**. W skrócie: napisz jeden plik YAML z kształtem wyniku,
-frazami rozpoznającymi typ (z punktami i progiem), opcjonalnymi sekcjami oraz metodami ekstrakcji dla każdego pola.
-Następnie uruchom `--check-config`, skalibruj próg na przykładowych dokumentach (`python -m odwolania2json.calibrate`)
-i dodaj typ przez `--doctype`. Przykład [config/examples/orzeczenie_kio.yaml](config/examples/orzeczenie_kio.yaml)
-(orzeczenia KIO) powstał właśnie w ten sposób; jego włączenie zmienia tylko wynik dla orzeczenia, a wszystkie
-pozostałe wyniki zostają identyczne.
+Szczegóły: **[docs/ADDING_A_DOCTYPE.md](docs/ADDING_A_DOCTYPE.md)**. W skrócie: piszesz jeden plik YAML ze strukturą
+wyniku, frazami, po których rozpoznaje się typ (każda z liczbą punktów, do tego próg), opcjonalnymi sekcjami
+i sposobem odczytu każdego pola. Potem uruchamiasz `--check-config`, dobierasz próg na przykładowych dokumentach
+(`python -m odwolania2json.calibrate`) i dodajesz typ opcją `--doctype`. Tak powstał przykład
+[config/examples/orzeczenie_kio.yaml](config/examples/orzeczenie_kio.yaml) (orzeczenia KIO). Po jego włączeniu
+zmieniają się tylko wyniki dla orzeczeń, a wszystkie pozostałe zostają bez zmian.
 
 ## Mapa kodu
 
 | Moduł | Rola |
 |---|---|
-| [odwolania2json/__main__.py](odwolania2json/__main__.py) | wiersz poleceń, przetwarzanie równoległe, zabezpieczenie czasowe, podsumowanie |
-| [reading.py](odwolania2json/reading.py) | warstwa tekstowa każdej strony, OCR dla stron bez tekstu (MinerU / Tesseract / zapasowy) |
-| [pipeline.py](odwolania2json/pipeline.py) | ładowanie konfiguracji, klasyfikacja regułami, ekstrakcja regułami, listy |
-| [extract.py](odwolania2json/extract.py) | metody ekstrakcji (etykieta → wartość typowana, regex, sekcje, nazwiska, miejscowość i data, …) |
-| [values.py](odwolania2json/values.py) | parsery wartości typowanych: daty (polskie nazwy miesięcy), kwoty, IBAN/NRB, BZP, TED, identyfikatory |
-| [hybrid.py](odwolania2json/hybrid.py) | kiedy pytany jest model, łączenie odpowiedzi reguł i modelu, sprawdzanie wiarygodności |
-| [llm.py](odwolania2json/llm.py) | klient zgodny z API OpenAI, z ponawianiem i limitem równoległych zapytań |
-| [derive.py](odwolania2json/derive.py) | nazwane kroki końcowe używane w konfiguracji (kod 1–12, flagi, normalizacja, osoby podpisujące) |
+| [odwolania2json/__main__.py](odwolania2json/__main__.py) | wiersz poleceń, przetwarzanie równoległe, zabezpieczenia czasowe, podsumowanie |
+| [reading.py](odwolania2json/reading.py) | tekst z każdej strony, OCR dla stron bez tekstu (MinerU / Tesseract / silnik zapasowy) |
+| [pipeline.py](odwolania2json/pipeline.py) | wczytywanie konfiguracji, klasyfikacja i ekstrakcja regułami, listy |
+| [extract.py](odwolania2json/extract.py) | metody ekstrakcji (etykieta → wartość danego typu, regex, sekcje, imiona i nazwiska, miejscowość i data, …) |
+| [values.py](odwolania2json/values.py) | odczyt wartości: daty (z polskimi nazwami miesięcy), kwoty, IBAN/NRB, BZP, TED, identyfikatory |
+| [hybrid.py](odwolania2json/hybrid.py) | kiedy pytać model, łączenie odpowiedzi reguł i modelu, sprawdzanie wiarygodności |
+| [llm.py](odwolania2json/llm.py) | klient API zgodnego z OpenAI, z ponawianiem zapytań i limitem zapytań równoległych |
+| [derive.py](odwolania2json/derive.py) | nazwane kroki przetwarzania końcowego używane w konfiguracji (kod 1–12, flagi, normalizacja, osoby podpisujące) |
 | [validate.py](odwolania2json/validate.py) | sprawdzanie konfiguracji przy starcie |
-| [calibrate.py](odwolania2json/calibrate.py) | pomoc w doborze progu dla typów dokumentów |
-| [validators.py](odwolania2json/validators.py) | cyfry kontrolne NIP / REGON / PESEL / IBAN (raportowane, nie wymuszane) |
-| [ui.py](odwolania2json/ui.py) | serwer interfejsu w przeglądarce (tylko biblioteka standardowa), obrazy stron, pochodzenie pól, przełączanie typów dokumentów |
-| [layout.py](odwolania2json/layout.py) | tylko dla interfejsu: geometria strony (ramki znaków / OCR) i odnajdywanie każdej wartości na stronie |
+| [calibrate.py](odwolania2json/calibrate.py) | pomoc w doborze progu dla typu dokumentu |
+| [validators.py](odwolania2json/validators.py) | cyfry kontrolne NIP / REGON / PESEL / IBAN (tylko raportowane) |
+| [ui.py](odwolania2json/ui.py) | serwer interfejsu w przeglądarce (tylko biblioteka standardowa), obrazy stron, pochodzenie wartości, przełączanie typów dokumentów |
+| [layout.py](odwolania2json/layout.py) | tylko dla interfejsu: geometria strony (położenie znaków i bloków OCR) i odnajdywanie wartości na stronie |
 
-Narzędzia do ewaluacji i badań są w [research/eval/](research/eval/) (liczenie F1 według zasad organizatorów,
-„odnajdywalność” wartości w OCR, benchmarki modeli i modeli decyzyjnych) oraz w [research/naive/](research/naive/)
-(rozwiązania bazowe oparte wyłącznie na modelu). Notatki (po angielsku): [NOTES.md](NOTES.md) (rozpoznanie zadania),
-[FAQ.md](FAQ.md) (odpowiedzi organizatorów), [MODELS.md](MODELS.md) (modele i hosty w UE),
+Narzędzia do oceny i badań są w [research/eval/](research/eval/) (liczenie F1 według zasad organizatorów, sprawdzanie,
+czy wartości da się znaleźć w tekście z OCR, porównania modeli) oraz w [research/naive/](research/naive/) (rozwiązania
+porównawcze oparte wyłącznie na modelu). Notatki (po angielsku): [NOTES.md](NOTES.md) (analiza zadania),
+[FAQ.md](FAQ.md) (odpowiedzi organizatorów), [MODELS.md](MODELS.md) (modele i dostawcy w UE),
 [EXPERIMENTS.md](EXPERIMENTS.md) (wszystkie pomiary).
