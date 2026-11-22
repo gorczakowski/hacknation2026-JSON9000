@@ -30,16 +30,20 @@ sections:
     max_chars: 1500
 
 fields:
+  # final: true = on text PDFs the rule's answer stands even when empty: no model fill (ignored on OCR text).
+  # Many appeals have no "Place, date" header at all; the model then picked up KIO's address or a body date.
   OdwolanieKIO.data:
-    - {place_date: date, max_chars: 5000}
+    - {place_date: date, max_chars: 5000, date_only_before: '^\s*odwołanie\s*$', final: true}
   OdwolanieKIO.miejscowosc:
-    - {place_date: place, max_chars: 5000}
+    - {place_date: place, max_chars: 5000, final: true}
+  # Notice numbers: the "dotyczy" block names this procurement's own notices; the body may cite other
+  # proceedings' notices. When the block is found it decides (even "none"); otherwise search the whole text.
   ZamowieniePubliczne.numer_bzp:
-    - {find: bzp, scope: dotyczy}
+    - {find: bzp, scope: dotyczy, final: true}
     - {find: bzp}
   ZamowieniePubliczne.numer_ted:
+    - {find: ted, scope: dotyczy, final: true}
     - {regex: '(?:Dziennik\w*\s+Urzędow\w*|Dz\.\s*U\.\s*UE|TED)[^\n]{0,60}?(?P<v>\d{4}\s*/\s*S\s*\d{1,3}\s*-\s*\d{5,7}|\d{5,7}\s*-\s*\d{4})', dotall: true}
-    - {find: ted, scope: dotyczy}
   ZamowieniePubliczne.numer_postepowania:
     - label: ['nr\s+referencyjny(\s+sprawy)?', 'numer\s+referencyjny', 'znak\s+sprawy', 'znak\s+postępowania', 'numer\s+postępowania', 'nr\s+postępowania', 'nr\s+sprawy', 'sygnatura']
       type: token
@@ -120,7 +124,23 @@ powod:
     11: "Opis przedmiotu zamówienia (OPZ)"
     12: "Projektowane postanowienia umowy"
 
-derive: [powod_and_date, przez_pelnomocnika, prowadzacy_postepowanie, normalize]
+# Header fallback (derive step header_line): when no header date was found, the model picks ONE numbered line from
+# the first max_chars of the document; its date/place are kept only if they can be seen in that line. Reads header
+# formats the place_date rule does not know, without inventing a header where there is none (EXPERIMENTS.md).
+header_line:
+  date: OdwolanieKIO.data
+  place: OdwolanieKIO.miejscowosc
+  max_chars: 5000
+  max_lines: 80
+  prompt: |-
+    Poniżej są ponumerowane wiersze z początku odwołania do KIO. Wskaż wiersz, który podaje datę sporządzenia
+    odwołania (nagłówek pisma, zwykle „Miejscowość, data”). Nie wybieraj adresów stron ani Krajowej Izby Odwoławczej,
+    dat czynności zamawiającego ani dat ustaw. Zwróć JSON:
+    {"wiersz": <numer albo null>, "data": "YYYY-MM-DD" albo null, "miejscowosc": "<miejscowość z tego wiersza>" albo null}
+    Miejscowość podaj tylko, jeśli jest w wybranym wierszu. Jeśli żaden wiersz nie podaje daty sporządzenia odwołania,
+    zwróć {"wiersz": null, "data": null, "miejscowosc": null}.
+
+derive: [header_line, powod_and_date, przez_pelnomocnika, prowadzacy_postepowanie, normalize]
 
 # Model fallback for fields: fill = rules first, model fills gaps; model_first = model wins, rules fill gaps; off
 llm:

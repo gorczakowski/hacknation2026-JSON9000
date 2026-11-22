@@ -40,6 +40,41 @@ Main error sources:
 
 | **Hybrid in the CLI** (11-22): rules + Qwen3.5-4B (ARK), classification safety net, `fill` / `model_first` modes, sanity checks on model values, 1–12 fallback on the passage. OCR from the cache | **0.979** | – | 0.920 | 0.976 | 226/226 | 564 s (226 PDFs, 185 model calls; 36 failed during an ARK outage, before the retry fix) |
 
+| **Hybrid v2** (11-22): rule authority on text PDFs (`final: true`: header date/place, TED/BZP from the "dotyczy" block); model_first list items completed from the rules' item with the same NIP/KRS/REGON/PESEL (text PDFs); model not asked when a `fill` record is complete; time budget for model retries and MinerU. OCR from the cache | **0.996** (strict) | 0.998 | 0.980 | 0.993 | 226/226 | 429 s; 171 model calls (was 218), 50 complete transfers skip the model |
+
+Hybrid v2, what changed and why (public set, strict scorer; errors 54 -> 19 vs the VM run):
+- Header: 15 of 60 text appeals have no "Place, date" line (gold null). The model filled 15 values there (KIO's
+  address "Warszawa", body dates) and never added a correct header value on a text appeal. Now the rule decides
+  on text PDFs. The rule was also widened for unseen layouts: "nad/pod" in place names, "dn.", and a date-only line
+  at the top or right above the "ODWOŁANIE" heading (date only, no place).
+- TED/BZP: the global TED regex ran before the "dotyczy" block and picked numbers of other proceedings cited in
+  the body (7 wrong). With the block found, its answer stands (8 spurious removed, 2 of them model fills).
+  Without the block, the whole-text search and the model still run.
+- `final` is ignored on OCR text: scan 0001 (Tesseract) has the "Dotyczy:" label detached from its value by the
+  two-column layout; making it final there lost the BZP number.
+- Identity merge: in case 47/51/52 the model returned the principal's NIP without the name, so the type became
+  osoba_prawna. Restricted to text PDFs: on scan 0009 it added a wrong e-mail from the OCR rules.
+- Remaining scan difference vs the VM run (0005 attorney firm name) is a model answer change, not a rule change.
+
+Header when the rule finds nothing (scratchpad experiment, Qwen3.5-4B on ARK, 60 text appeals; 171 model calls).
+The 45 real header lines were rewritten into formats the rule does not read (dash separator, Roman month,
+"Miejsce i data:" label, 2-digit year, "Data sporządzenia:" without a place) plus a date-only line the rule reads.
+Counts are values (date + place); "none" = the 15 appeals without a header (gold null).
+| Policy | Known formats (90 values) | Unknown formats (90) | No header (30, gold null) |
+|---|---|---|---|
+| Rule only (current) | 90 correct | 7 correct, **69 missed** | 30 correct null |
+| Rule + whole-record model fill (before) | 90 correct | 75 correct, **14 wrong**, 1 missed | **13 wrong** |
+| Rule + line choice: model picks one numbered line of the first 5000 chars, Python parses its answer and keeps a value only if it is in that line | 90 correct | **76 correct**, 0 wrong | **30 correct null** |
+- The whole-record model reads every unknown format, but adds a place whenever the header has none (mostly
+  "Warszawa" from KIO's address). Line choice keeps that ability without the inventions: KIO's address and body
+  dates are lines too, and the model did not pick them.
+- First line-choice run had two harness bugs, fixed before the second run (prompt unchanged): the model returns the
+  date as written ("09.11.26"), so Python must parse it; and the candidate window must match the rule's (the
+  header line sometimes follows the "ODWOŁANIE" heading).
+- One run, synthetic formats, same model. The "no header" group is real data.
+- Implemented as the `header_line` derive step (prompt in `odwolanie.yaml`). The step itself, run on the same
+  cases: unknown formats 76 correct / 0 wrong, no-header appeals 30 correct nulls.
+
 **VM-like runs** (Docker `--cpus=2 --memory=16g`, image `json9000`):
 | Run | F1 | Scans F1 | Time |
 |---|---|---|---|

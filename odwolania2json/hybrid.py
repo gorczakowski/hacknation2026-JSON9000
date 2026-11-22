@@ -9,10 +9,14 @@ Classification ("safety net"):
 
 Fields: per document type `llm.mode`
   - fill         rules first; the model only fills fields the rules left empty   (appeals, transfers)
+                 Fields decided by a `final: true` rule are never filled by the model; when nothing else is
+                 empty the model is not asked.
   - model_first  the model's answer wins; rules fill what the model left empty     (powers of attorney)
   - off          rules only
   For OCR'd scans `hybrid.scan_mode` (default model_first) overrides it, because rules are weaker on OCR text.
-  Lists (e.g. attorneys) are never mixed item by item: a list is taken whole from one source.
+  Lists (e.g. attorneys) are taken whole from one source. In model_first on text-layer PDFs, an item of the model's
+  list is then completed from the rules' item with the same identifier (NIP, KRS, REGON or PESEL), if exactly one
+  matches. Not on OCR text, where the rules' items are too noisy.
 """
 
 from __future__ import annotations
@@ -92,13 +96,64 @@ def _empty(v):
     return v is None or v == "" or v == [] or v == {}
 
 
-def merge(primary, secondary):
-    """primary's values win; secondary fills what primary left empty. Lists are taken whole from one source."""
+ID_KEYS = ("nip", "krs", "regon", "pesel")
+
+
+def _ids(item, out=None):
+    """(key, value) pairs of the identifiers anywhere in a list item (e.g. data.nip), nested lists excluded."""
+    out = set() if out is None else out
+    if isinstance(item, dict):
+        for k, v in item.items():
+            if k in ID_KEYS and not _empty(v) and not isinstance(v, (dict, list)):
+                out.add((k, str(v)))
+            elif isinstance(v, dict):
+                _ids(v, out)
+    return out
+
+
+def _merge_items(primary: list, secondary: list) -> list:
+    """Each primary item keeps its values; its empty fields are filled from the one secondary item that shares an
+    identifier with it (NIP, KRS, REGON, PESEL), if exactly one does and that item matches no other primary item."""
+    ids_p = [_ids(p) for p in primary]
+    ids_s = [_ids(s) for s in secondary]
+    out = []
+    for i, p in enumerate(primary):
+        cand = [j for j, s in enumerate(ids_s) if ids_p[i] & s]
+        if len(cand) == 1 and sum(1 for ip in ids_p if ip & ids_s[cand[0]]) == 1:
+            p = merge(p, secondary[cand[0]], by_identity=True)
+        out.append(p)
+    return out
+
+
+def merge(primary, secondary, by_identity=False):
+    """primary's values win; secondary fills what primary left empty. Lists are taken whole from one source;
+    with `by_identity`, items of the chosen list are completed from the other source's item with the same ID."""
     if isinstance(primary, dict) and isinstance(secondary, dict):
-        return {k: merge(primary.get(k), secondary.get(k)) for k in primary}
+        return {k: merge(primary.get(k), secondary.get(k), by_identity) for k in primary}
     if isinstance(primary, list) or isinstance(secondary, list):
-        return primary if primary else (secondary or [])
+        if not primary:
+            return secondary or []
+        if (by_identity and isinstance(secondary, list) and secondary
+                and all(isinstance(x, dict) for x in primary + secondary)):
+            return _merge_items(primary, secondary)
+        return primary
     return secondary if _empty(primary) else primary
+
+
+def _has_gap(obj, final, path="") -> bool:
+    """True if some field outside `final` is empty (a list counts as one field)."""
+    if path in final:
+        return False
+    if isinstance(obj, dict):
+        return any(_has_gap(v, final, f"{path}.{k}" if path else k) for k, v in obj.items())
+    return _empty(obj)
+
+
+def _set(obj, path, value):
+    keys = path.split(".")
+    for k in keys[:-1]:
+        obj = obj[k]
+    obj[keys[-1]] = value
 
 
 def _filled_paths(before, after, path=""):
@@ -114,13 +169,18 @@ def _filled_paths(before, after, path=""):
     return out
 
 
-def model_fallback(doc, dt, data, llm, hcfg, evidence):
-    """Ask the model for the whole record and combine it with the rules' record according to the mode."""
+def model_fallback(doc, dt, data, llm, hcfg, evidence, final=frozenset()):
+    """Ask the model for the whole record and combine it with the rules' record according to the mode.
+
+    `final`: paths decided by a `final: true` rule. In `fill` mode the model does not change them, and when every
+    other field is already filled the model is not asked at all."""
     mode = (dt.cfg.get("llm") or {}).get("mode", "fill")
     if doc.source in ("ocr", "text+ocr"):
         mode = hcfg.get("scan_mode", "model_first") if mode != "off" else "off"
     if llm is None or mode == "off":
         return data, "rules"
+    if mode == "fill" and not _has_gap(data, final):
+        return data, "rules (complete, model not asked)"
     extra = (dt.cfg.get("llm") or {}).get("instructions", "")
     prompt = EXTRACT_PROMPT.format(doc_type=dt.name, spec=dt.template_text, extra=("\n" + extra) if extra else "")
     try:
@@ -130,7 +190,13 @@ def model_fallback(doc, dt, data, llm, hcfg, evidence):
         return data, "rules (model failed)"
     model = sanitize(conform(raw, dt.template))
     before = copy.deepcopy(data)
-    merged = merge(model, data) if mode == "model_first" else merge(data, model)
+    if mode == "model_first":
+        # completing the model's list items from the rules is only safe where the rules read a text layer
+        merged = merge(model, data, by_identity=doc.source == "text")
+    else:
+        merged = merge(data, model)
+        for p in final:
+            _set(merged, p, copy.deepcopy(_get_raw(before, p)))
     for p in _filled_paths(before, merged):
         evidence.append({"field": p, "value": _get(merged, p), "method": f"model:{mode}"})
     return merged, f"rules+model ({mode})"
@@ -168,6 +234,12 @@ def sanitize(obj, key=None):
             return None
     if isinstance(obj, str) and obj.strip().lower() in ("", "null", "none", "brak", "n/a"):
         return None
+    return obj
+
+
+def _get_raw(obj, path):
+    for k in path.split("."):
+        obj = obj[k]
     return obj
 
 

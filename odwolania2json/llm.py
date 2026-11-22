@@ -36,6 +36,7 @@ class LLM:
         self.calls = 0
         self.failures = 0
         self.lock = threading.Lock()
+        self.stop_at: float | None = None  # wall-clock time after which no request is started (runtime budget)
 
     @property
     def available(self) -> bool:
@@ -53,9 +54,19 @@ class LLM:
         retryable = (404, 408, 409, 425, 429, 500, 502, 503, 504)
         for attempt in range(int(self.cfg.get("retries", 4))):
             wait = min(20, 3 * (attempt + 1))
+            left = self._time_left()
+            if left is not None and left < 5:
+                with self.lock:
+                    self.failures += 1
+                raise LLMError(f"time budget exhausted (after {attempt} attempt(s); last error: {last})")
             try:
-                with self.sem:
-                    r = self.http.post(f"{self.base_url}/chat/completions", json=body, headers=headers)
+                if not self.sem.acquire(timeout=left):
+                    continue  # waited for a free slot until the budget ran out; the check above ends the loop
+                try:
+                    r = self.http.post(f"{self.base_url}/chat/completions", json=body, headers=headers,
+                                       timeout=self.timeout if left is None else min(self.timeout, left))
+                finally:
+                    self.sem.release()
                 if r.status_code in retryable:
                     if "minute" in r.text.lower():
                         wait = 30
@@ -74,10 +85,14 @@ class LLM:
                     raise
             except (httpx.HTTPError, ValueError, KeyError) as e:
                 last = e
-            time.sleep(wait)
+            left = self._time_left()
+            time.sleep(wait if left is None else max(0.0, min(wait, left - 5)))
         with self.lock:
             self.failures += 1
         raise LLMError(f"LLM call failed after retries: {last}")
+
+    def _time_left(self) -> float | None:
+        return None if self.stop_at is None else self.stop_at - time.time()
 
 
 def parse_json(text: str) -> dict:

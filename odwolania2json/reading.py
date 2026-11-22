@@ -65,6 +65,7 @@ class MinerUOCR:
         self.tier = tier
         self.cache_dir = cache_dir
         self.lock = threading.Lock()  # one OCR job at a time (CPU bound, large models)
+        self.stop_at: float | None = None  # wall-clock limit for the subprocess (runtime budget)
 
     def available(self) -> bool:
         return bool(self.python) and Path(self.python).exists()
@@ -105,7 +106,13 @@ class MinerUOCR:
         with self.lock, tempfile.TemporaryDirectory() as td:
             out = Path(td) / "out.json"
             cmd = [self.python, str(script), str(path), str(out), self.tier] + (["layout"] if layout else [])
-            r = subprocess.run(cmd, capture_output=True, timeout=1800, env=env)
+            limit = 1800.0 if self.stop_at is None else min(1800.0, self.stop_at - time.time())
+            if limit < 10:
+                raise OCRError("MinerU: time budget exhausted")
+            try:
+                r = subprocess.run(cmd, capture_output=True, timeout=limit, env=env)
+            except subprocess.TimeoutExpired as e:
+                raise OCRError(f"MinerU: timed out after {limit:.0f} s") from e
             if r.returncode != 0 or not out.exists():
                 tail = (r.stderr or b"").decode("utf-8", "replace").strip().splitlines()[-3:]
                 raise OCRError(f"MinerU exit {r.returncode}: {' | '.join(tail)[:500]}")

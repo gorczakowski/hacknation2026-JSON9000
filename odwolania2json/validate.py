@@ -6,7 +6,7 @@ Checks every document-type YAML before a batch starts and reports problems as "<
   - section references point at a defined section
   - output paths exist in the JSON template (fields, list paths, list item fields)
   - named post-processing steps (`derive`) exist
-  - extraction methods use a known kind and value type
+  - extraction methods use a known kind and value type (and valid `final` / `date_only_before` options)
 """
 
 from __future__ import annotations
@@ -77,6 +77,12 @@ def _methods(errors, where, methods, sections):
             errors.append(f"{w}: find '{m['find']}' not one of {sorted(FIND_TYPES)}")
         for st in m.get("stop", []):
             _rx(errors, f"{w}.stop", st)
+        if "final" in m and not isinstance(m["final"], bool):
+            errors.append(f"{w}: final must be true or false")
+        if "date_only_before" in m:
+            if kind != "place_date":
+                errors.append(f"{w}: date_only_before only applies to place_date")
+            _rx(errors, f"{w}.date_only_before", m["date_only_before"])
 
 
 def validate(doctypes, derive_registry) -> list[str]:
@@ -131,6 +137,15 @@ def validate(doctypes, derive_registry) -> list[str]:
         for name in cfg.get("derive", []):
             if name not in derive_registry:
                 errors.append(f"{f}: derive '{name}' unknown (available: {sorted(derive_registry)})")
+        if "header_line" in cfg.get("derive", []):
+            hl = cfg.get("header_line") or {}
+            if not hl.get("prompt"):
+                errors.append(f"{f}: header_line.prompt: needed by the header_line step")
+            if not hl.get("date"):
+                errors.append(f"{f}: header_line.date: needed by the header_line step")
+            for key in ("date", "place"):
+                if hl.get(key) and not _has_path(dt.template, hl[key]):
+                    errors.append(f"{f}: header_line.{key}: path not in template {cfg.get('template')}")
         if "powod_and_date" in cfg.get("derive", []):
             pw = cfg.get("powod") or {}
             for i, r in enumerate(pw.get("rules", [])):

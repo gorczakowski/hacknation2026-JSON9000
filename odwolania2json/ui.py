@@ -46,7 +46,7 @@ TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=u
          ".txt": "text/plain; charset=utf-8"}
 RULE_METHODS = ("label:", "regex", "nth:", "find:", "place_date", "first_line", "names_after:", "const",
                 "passage_rules", "passage_date", "signatories")
-MODEL_METHODS = ("model", "passage_model", "model_document")
+MODEL_METHODS = ("model", "passage_model", "model_document", "header_line")
 
 
 # --- configuration (document types can be switched on and off) ---------------------------------------------

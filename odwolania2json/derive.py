@@ -182,7 +182,60 @@ def normalize(data, doc, dt, evidence):
     return data
 
 
+def header_line(data, doc, dt, evidence):
+    """Header date/place when the rules (and, on scans, the model) found no date: the model picks ONE numbered line
+    from the top of the document; Python parses its answer and keeps a value only if it is visible in that line.
+    Asking for a line instead of a value keeps the model's reading of unknown formats ("3 IX 2026", "Miejsce i data:")
+    without its typical error: a place or date taken from an address or the body when the header has none.
+    Configured under `header_line:` (date / place paths, prompt, max_chars, max_lines)."""
+    from .extract import fold
+    cfg = dt.cfg.get("header_line") or {}
+    llm = getattr(doc, "llm", None)
+    dpath, ppath = cfg.get("date"), cfg.get("place")
+    if llm is None or not dpath or _path_get(data, dpath) is not None:
+        return data
+    cands = [ln.strip()[:150] for ln in doc.norm[: int(cfg.get("max_chars", 5000))].split("\n") if ln.strip()]
+    cands = cands[: int(cfg.get("max_lines", 80))]
+    if not cands:
+        return data
+    try:
+        ans = llm.chat_json(cfg["prompt"], "\n".join(f"{i + 1}: {ln}" for i, ln in enumerate(cands)))
+        line = cands[int(ans.get("wiersz")) - 1]
+    except Exception:  # noqa: BLE001 - no answer, no line, or a number outside the list: keep the rules' null
+        return data
+    iso = V.parse_date_loose(str(ans.get("data") or ""))
+    if iso:  # the day and the year (4 or 2 digits) must be visible in the chosen line
+        y, _, d = iso.split("-")
+        if not (re.search(rf"(?<!\d)0?{int(d)}(?!\d)", line)
+                and (y in line or re.search(rf"(?<!\d){y[2:]}(?!\d)", line))):
+            iso = None
+    if not iso:  # a header line must at least give the date; a place alone is not trusted
+        return data
+    _path_set(data, dpath, iso)
+    evidence.append({"field": dpath, "value": iso, "method": "header_line:model", "context": line})
+    place = ans.get("miejscowosc")
+    if ppath and _path_get(data, ppath) is None and isinstance(place, str) and place.strip() \
+            and fold(place.strip()).lower() in fold(line).lower():
+        _path_set(data, ppath, place.strip())
+        evidence.append({"field": ppath, "value": place.strip(), "method": "header_line:model", "context": line})
+    return data
+
+
+def _path_get(obj, path):
+    for k in path.split("."):
+        obj = obj.get(k) if isinstance(obj, dict) else None
+    return obj
+
+
+def _path_set(obj, path, value):
+    keys = path.split(".")
+    for k in keys[:-1]:
+        obj = obj[k]
+    obj[keys[-1]] = value
+
+
 REGISTRY = {
+    "header_line": header_line,
     "powod_and_date": powod_and_date,
     "przez_pelnomocnika": przez_pelnomocnika,
     "prowadzacy_postepowanie": prowadzacy_postepowanie,

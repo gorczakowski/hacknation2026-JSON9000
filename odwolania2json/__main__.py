@@ -121,6 +121,14 @@ def main(argv=None) -> int:
         return f"{rel} [{doc.source}] -> {meta['type'] or 'nieznany typ ({})'}"
 
     t0 = time.time()
+    # Hard stop for work already under way at the deadline: model retries and the MinerU subprocess end by
+    # deadline + stop_grace_s (default 3 min, i.e. 43 min); the document then keeps its rules result.
+    stop_at = t0 + deadline + float(rt.get("stop_grace_s", 180))
+    if llm is not None:
+        llm.stop_at = stop_at
+    for o in (ocr, getattr(ocr, "primary", None), getattr(ocr, "fallback", None)):
+        if o is not None and hasattr(o, "stop_at"):
+            o.stop_at = stop_at
     failed = 0
     read_errors: list = []
     with ThreadPoolExecutor(max_workers=workers) as ex:

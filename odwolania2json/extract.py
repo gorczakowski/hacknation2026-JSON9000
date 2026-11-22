@@ -8,11 +8,16 @@ A field is a list of methods tried in order; the first that yields a value wins.
   regex: pattern           named group (?P<v>...) or group 1; optional `type` to parse it
   find: type               first value of that type anywhere in the scope (e.g. email, bzp, ted)
   place_date: place|date   from a "Miejscowość, (dnia) <data>" line
+      date_only_before: regex   (date) also accept a line with only a date, if it is the first line or the
+                                line right above the heading matched by this regex
   first_line: true         first non-empty line of the scope (e.g. company name after "Odwołujący:")
   names_after: [regex]     list of person names after a label (titles stripped), for list fields
   const: value
 
 Every method can set `scope: <section>` (default: the current scope).
+A method with `final: true` that can run (no scope, or its section was found) decides the field even when it finds
+nothing: later methods are skipped and, in `fill` mode, the model may not fill the field. Text-layer PDFs only;
+on OCR text `final` is ignored (OCR can separate a label from its value).
 Sections are defined per doctype: {name: {start: [regex], end: [regex], max_chars: N}}.
 """
 
@@ -26,6 +31,14 @@ from . import values as V
 TITLES = r"(?:r\.\s?pr\.|radc[aąy]\s+prawn\w*|adw\.|adwokat\w*|mec\.|mgr|dr\s+hab\.|dr|prof\.|inż\.|pan[iy]?|pana)\s*"
 NAME_TOKEN = r"[A-ZŁŚŻŹĆŃÓĘĄ][a-ząćęłńóśźż]+(?:-[A-ZŁŚŻŹĆŃÓĘĄ][a-ząćęłńóśźż]+)?"
 NAME_RE = re.compile(rf"(?:{TITLES})*({NAME_TOKEN}(?:\s+{NAME_TOKEN}){{1,2}})")
+
+# Header line "Miejscowość, (dnia|dn.) <data>". Place: up to 4 capitalized words joined by space/hyphen or by
+# nad/pod/n./k. ("Kostrzyn nad Odrą", "Bielsko-Biała").
+_DATE = r"\d{1,2}[.\-/]\d{1,2}[.\-/]\d{4}|\d{1,2}\s+[a-ząćęłńóśźż]+\s+\d{4}|\d{4}-\d{2}-\d{2}"
+_CAP = r"[A-ZĄĆĘŁŃÓŚŹŻ]\w+"
+PLACE_DATE_RE = re.compile(rf"^\s*({_CAP}(?:(?:[ -]|\s(?:nad|pod|n\.|k\.)\s){_CAP}){{0,3}})"
+                           rf"(?:\s*,\s*(?:(?:dnia|dn\.)\s*)?|\s+(?:dnia|dn\.)\s*)({_DATE})", re.M)
+DATE_ONLY_RE = re.compile(rf"\s*(?:(?:dnia|dn\.)\s*)?({_DATE})\s*(?:r\.|roku)?\s*")
 
 
 _FOLD = str.maketrans("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ", "acelnoszzACELNOSZZ")
@@ -161,9 +174,8 @@ def run_method(m: dict, scope: Scope) -> Hit | None:
             return Hit(r[0], "find:date", scope.offset + r[1], scope.offset + r[2]) if r else None
         raise ValueError(kind)
     if "place_date" in m:
-        rx = re.compile(r"^\s*([A-ZŁŚŻŹĆ][\wąćęłńóśźż]+(?:[ -][A-ZŁŚŻŹĆ][\wąćęłńóśźż]+){0,2})(?:\s*,\s*(?:dnia\s+)?|\s+dnia\s+)"
-                        r"(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{4}|\d{1,2}\s+[a-ząćęłńóśźż]+\s+\d{4}|\d{4}-\d{2}-\d{2})", re.M)
-        for mm in rx.finditer(s[: m.get("max_chars", 6000)]):
+        head = s[: m.get("max_chars", 6000)]
+        for mm in PLACE_DATE_RE.finditer(head):
             place, dtxt = mm.group(1), mm.group(2)
             d = V.parse_date(dtxt)
             if not d:
@@ -171,6 +183,21 @@ def run_method(m: dict, scope: Scope) -> Hit | None:
             if m["place_date"] == "place":
                 return Hit(place, "place_date", scope.offset + mm.start(1), scope.offset + mm.end(1))
             return Hit(d[0], "place_date", scope.offset + mm.start(2), scope.offset + mm.end(2))
+        # No "Place, date" line. A line holding only a date counts as a date-only header (date, no place) when it
+        # is the first line of the document or the line right above the heading given in `date_only_before`.
+        if m["place_date"] == "date" and m.get("date_only_before"):
+            lines = [(lm.start(), lm.group()) for lm in re.finditer(r"[^\n]*\S[^\n]*", head)]
+            cands = lines[:1]
+            for i, (_, line) in enumerate(lines):
+                if i and re.search(fold(m["date_only_before"]), fold(line), re.I):
+                    cands.append(lines[i - 1])
+                    break
+            for pos, line in cands:
+                dm = DATE_ONLY_RE.fullmatch(line)
+                d = V.parse_date(dm.group(1)) if dm else None
+                if d:
+                    return Hit(d[0], "place_date:date_only", scope.offset + pos + dm.start(1),
+                               scope.offset + pos + dm.end(1))
         return None
     if "first_line" in m:
         for line in s.split("\n"):
@@ -193,12 +220,20 @@ def run_method(m: dict, scope: Scope) -> Hit | None:
     raise ValueError(f"unknown extraction method {m}")
 
 
-def run_field(methods: list[dict], scope: Scope) -> Hit | None:
+def run_field(methods: list[dict], scope: Scope, final: list | None = None) -> Hit | None:
+    """First method that yields a value wins. A method marked `final: true` that could run (its section was found,
+    or it has no scope) ends the search even without a value, and the answer is appended to `final` (if given):
+    that field's rule answer is authoritative and the model must not fill it."""
     for m in methods:
         h = run_method(m, scope)
-        if h is not None and h.value not in (None, "", []):
-            if m.get("first") and isinstance(h.value, list):
-                h.value = h.value[0]
+        ok = h is not None and h.value not in (None, "", [])
+        if ok and m.get("first") and isinstance(h.value, list):
+            h.value = h.value[0]
+        if m.get("final") and ("scope" not in m or m["scope"] in scope.sections):
+            if final is not None:
+                final.append(m)
+            return h if ok else None
+        if ok:
             return h
     return None
 

@@ -41,6 +41,28 @@ def parse_date(s: str, anchored: bool = True):
     return best
 
 
+_ROMAN = {r: i + 1 for i, r in enumerate(["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"])}
+
+
+def parse_date_loose(s: str) -> str | None:
+    """ISO date from a short string as a model copies it from a header: anything parse_date reads, plus
+    dd.mm.yy (20yy) and "3 IX 2026". Only for model answers; the rules keep the strict parse_date."""
+    if not isinstance(s, str) or not s.strip():
+        return None
+    r = parse_date(s.strip(), anchored=False)
+    if r:
+        return r[0]
+    m = re.search(r"(?<!\d)(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2})(?!\d)", s)
+    parts = (f"20{m[3]}", m[2], m[1]) if m else None
+    if not parts:
+        m = re.search(r"(?<!\d)(\d{1,2})\s+([IVX]{1,4})\.?\s+(\d{4})(?!\d)", s)
+        parts = (m[3], _ROMAN[m[2]], m[1]) if m and m[2] in _ROMAN else None
+    try:
+        return date(int(parts[0]), int(parts[1]), int(parts[2])).isoformat() if parts else None
+    except ValueError:
+        return None
+
+
 def find_dates(s: str):
     """All dates in s, in order: list of (iso, start, end)."""
     out = []

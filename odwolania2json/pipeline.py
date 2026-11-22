@@ -139,7 +139,8 @@ def split_items(scope: X.Scope, rx: str | None, max_items: int) -> list[X.Scope]
     return items
 
 
-def extract_doc(doc: Document, dt: DocType, evidence: list) -> dict:
+def extract_doc(doc: Document, dt: DocType, evidence: list, final: set | None = None) -> dict:
+    """Rules record. Paths of fields decided by a `final: true` method are added to `final` (if given)."""
     cfg = dt.cfg
     text = doc.norm
     sections = X.build_sections(text, cfg.get("sections", {}))
@@ -150,7 +151,12 @@ def extract_doc(doc: Document, dt: DocType, evidence: list) -> dict:
     _blank(out)
 
     for path, methods in (cfg.get("fields") or {}).items():
-        h = X.run_field(methods, root)
+        if doc.source != "text":  # OCR can detach labels from their values (columns): `final` is for text layers
+            methods = [{k: v for k, v in m.items() if k != "final"} for m in methods]
+        fin: list = []
+        h = X.run_field(methods, root, fin)
+        if fin and final is not None:
+            final.add(path)
         if h:
             set_path(out, path, h.value)
             evidence.append(_ev(path, h, text))
@@ -235,8 +241,9 @@ def process_document(doc: Document, doctypes: list[DocType], derive_fns: dict, h
     if dtype is None:
         return {}, meta, evidence
     dt = next(d for d in doctypes if d.name == dtype)
-    data = extract_doc(doc, dt, evidence)
-    data, how_fields = H.model_fallback(doc, dt, data, doc.llm, hcfg, evidence)
+    final: set = set()
+    data = extract_doc(doc, dt, evidence, final)
+    data, how_fields = H.model_fallback(doc, dt, data, doc.llm, hcfg, evidence, final)
     meta["fields_decided_by"] = how_fields
     for name in dt.cfg.get("derive", []):
         data = derive_fns[name](data, doc, dt, evidence)

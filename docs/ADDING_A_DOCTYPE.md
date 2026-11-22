@@ -84,7 +84,7 @@ llm:
 | `label` + `type` | `{label: ['kwota\s+operacji', 'kwota'], type: amount}` | the value right after one of the labels (first label that yields a value wins) |
 | `regex` | `{regex: 'NIP\s*(?P<v>\d{10})'}` | named group `v` (or group 1); optional `type` to parse it; `dotall: true` |
 | `find` | `{find: email}` | first value of a kind anywhere in the scope: `email`, `bzp`, `ted`, `date` |
-| `place_date` | `{place_date: date}` / `{place_date: place}` | from a header line like "Gdańsk, dnia 15 lipca 2026 r." |
+| `place_date` | `{place_date: date}` / `{place_date: place}` | from a header line like "Gdańsk, dnia 15 lipca 2026 r." (`date_only_before: '<heading regex>'`: also a date-only line at the top or right above that heading) |
 | `first_line` | `{first_line: true, skip: '^Konsorcjum'}` | first non-empty line of the scope (e.g. a company name after "Odwołujący:") |
 | `names_after` | `{names_after: ['udzielam\s+pełnomocnictwa'], first: true}` | person names after a phrase, titles (r. pr., adw.) stripped |
 | `nth` | `{nth: 1, of: account, min_count: 2}` | the n-th account number in the scope (fallback when there are no labels) |
@@ -92,6 +92,11 @@ llm:
 
 - Every method can take `scope: <section>`. If that section is not found in the document, the method is skipped
   and the next one is tried.
+- `final: true` makes a method authoritative: when it can run (no scope, or its section was found), its answer
+  stands even if it found nothing. Later methods are skipped, and in `fill` mode the model does not fill the field.
+  Use it when the absence of a value in the right place means "no value", e.g. notice numbers read only from the
+  "dotyczy" block, because the body may cite other proceedings. It applies to text-layer PDFs only; on OCR text it
+  is ignored, because OCR can separate a label from its value.
 - `type` values: `date` (ISO; Polish month names supported), `amount` (float), `account` (IBAN with country
   code, or a 26-digit NRB), `digitsN` (e.g. `digits10`), `email`, `token`, `bzp`, `ted`, `text` (multi-line, up to
   `stop:` labels), `line`.
@@ -117,14 +122,18 @@ Named steps from the built-in library, applied in order:
 |---|---|
 | `normalize` | IDs to digits; accounts without spaces, keeping the country code; BZP and TED formats; positive amounts; titles stripped from names |
 | `powod_and_date` | the 1–12 challenged-action code. Configured in the same YAML under `powod:` (passage patterns, keyword rules, labels); see [odwolanie.yaml](../config/doctypes/odwolanie.yaml) |
+| `header_line` | when no header date was found: the model picks one numbered line from the top of the document, and its date/place are kept only if they are visible in that line. Configured under `header_line:` (`date`, `place`, `prompt`, `max_chars`, `max_lines`); see [odwolanie.yaml](../config/doctypes/odwolanie.yaml) |
 | `przez_pelnomocnika`, `prowadzacy_postepowanie`, `mocodawca_typ`, `signatories` | appeal and power-of-attorney specific flags and lists |
 
 A new reusable step is a small Python function registered in `derive.REGISTRY`. That is the only time code changes.
 
 ## Model fallback (`llm`)
 
-- `fill`: the rules' values win, the model fills empty fields.
-- `model_first`: the model's values win, the rules fill gaps. Good when the layouts vary a lot.
+- `fill`: the rules' values win, the model fills empty fields (not `final` ones). When nothing is left to fill,
+  the model is not asked.
+- `model_first`: the model's values win, the rules fill gaps. Good when the layouts vary a lot. Lists come whole
+  from the model; on text-layer PDFs an item is then completed from the rules' item with the same NIP, KRS, REGON
+  or PESEL.
 - `off`: rules only.
 - Scans use `hybrid.scan_mode` from `pipeline.yaml` (default `model_first`).
 - The model receives the output shape with its comments as instructions, so good comments or an `output:` block
