@@ -1,0 +1,4 @@
+# Keep LF everywhere: the solution runs on Linux (evaluation VM, Docker)
+* text=auto eol=lf
+*.png binary
+*.pdf binary
